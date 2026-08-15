@@ -41,10 +41,10 @@ class LinkEngine {
 
       let html = "";
       if (chapter) {
-        html += `<div style="margin-bottom: 4px;">📖 <strong>Chapter:</strong> <span class="wikilink-chip" data-target="${chapter.replace(/\[\[|\]\]/g, "")}">${chapter}</span></div>`;
+        html += `<div style="margin-bottom: 6px; display: flex; align-items: center; gap: 6px;"><span class="tree-dot chapter"></span><strong>Chapter:</strong> <span class="wikilink-chip" data-target="${chapter.replace(/\[\[|\]\]/g, "")}">${chapter}</span></div>`;
       }
       if (topic) {
-        html += `<div>🌿 <strong>Topic:</strong> <span class="wikilink-chip" data-target="${topic.replace(/\[\[|\]\]/g, "")}">${topic}</span></div>`;
+        html += `<div style="display: flex; align-items: center; gap: 6px;"><span class="tree-dot topic"></span><strong>Topic:</strong> <span class="wikilink-chip" data-target="${topic.replace(/\[\[|\]\]/g, "")}">${topic}</span></div>`;
       }
       if (!chapter && !topic) {
         html = `<div style="color: var(--text-muted); font-size: 12px;">Top-level note (No parent)</div>`;

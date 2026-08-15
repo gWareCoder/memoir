@@ -1270,14 +1270,14 @@ class MemoirApp {
     toast.className = `toast ${type}`;
 
     const icons = {
-      chapter: "📖",
-      topic: "🌿",
-      thought: "💡",
-      info: "✨",
+      chapter: `<span class="tree-dot chapter" style="width:8px;height:8px;"></span>`,
+      topic: `<span class="tree-dot topic" style="width:8px;height:8px;"></span>`,
+      thought: `<span class="tree-dot thought" style="width:8px;height:8px;"></span>`,
+      info: `<span style="color:var(--accent-primary);font-weight:bold;">•</span>`,
     };
-    const icon = icons[type] || "✨";
+    const icon = icons[type] || icons.info;
 
-    toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+    toast.innerHTML = `${icon} <span>${message}</span>`;
     container.appendChild(toast);
 
     setTimeout(() => {
