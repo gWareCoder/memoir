@@ -1,271 +1,317 @@
 /**
  * Memoir - Voice Recognition & Speech Intelligence Engine
- * Handles continuous local speech recognition, voice trigger parsing ("chapter", "topic", "thought"),
- * audio visualizer waveform rendering, and synthetic audio feedback cues.
+ * Features real-time local PCM audio streaming to Vosk STT engine, WebSpeech fallback,
+ * live audio visualizer waveform rendering, and synthetic harmonic audio chimes.
  */
 
 class VoiceEngine {
   constructor() {
     this.isListening = false;
-    this.recognition = null;
     this.audioContext = null;
     this.analyser = null;
     this.microphoneStream = null;
+    this.scriptProcessor = null;
+    this.sourceNode = null;
+
     this.waveformCanvas = null;
     this.waveformCtx = null;
     this.animationFrameId = null;
 
+    this.sessionId = "session_" + Math.random().toString(36).substring(2, 9);
     this.language = localStorage.getItem("memoir_voice_lang") || "en-US";
     this.soundEffects = true;
 
+    // Real-time audio stream buffer
+    this.pcmBufferQueue = [];
+    this.isStreaming = false;
+    this.streamInterval = null;
+
     // Callbacks
-    this.onCommand = null;        // (type: 'chapter'|'topic'|'thought'|'link'|'tag', payload: string)
+    this.onCommand = null;        // (type: string, payload: string)
     this.onTranscription = null;  // (text: string, isFinal: boolean)
     this.onStatusChange = null;   // (isListening: boolean)
     this.onSpeechLog = null;       // (entry: { time: string, text: string, type: string })
+    this.onAudioLevel = null;      // (level: number 0-100)
 
-    this.silenceTimeout = null;
-    this.initSpeechRecognition();
+    this.webSpeechRecognition = null;
+    this.initWebSpeechFallback();
   }
 
-  initSpeechRecognition() {
+  initWebSpeechFallback() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn("SpeechRecognition API is not supported in this browser.");
-      return;
-    }
+    if (SpeechRecognition) {
+      try {
+        this.webSpeechRecognition = new SpeechRecognition();
+        this.webSpeechRecognition.continuous = true;
+        this.webSpeechRecognition.interimResults = true;
+        this.webSpeechRecognition.lang = this.language;
 
-    this.recognition = new SpeechRecognition();
-    this.recognition.continuous = true;
-    this.recognition.interimResults = true;
-    this.recognition.lang = this.language;
-    this.recognition.maxAlternatives = 1;
-
-    this.recognition.onstart = () => {
-      this.isListening = true;
-      if (this.onStatusChange) this.onStatusChange(true);
-      this.playChime("start");
-    };
-
-    this.recognition.onend = () => {
-      // Auto-restart if user still wants to be listening
-      if (this.isListening) {
-        try {
-          this.recognition.start();
-        } catch (e) {
-          // Might take a frame to restart
-          setTimeout(() => {
-            if (this.isListening) {
-              try { this.recognition.start(); } catch (err) {}
+        this.webSpeechRecognition.onresult = (event) => {
+          let interim = "";
+          let final = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              final += transcript;
+            } else {
+              interim += transcript;
             }
-          }, 300);
-        }
-      } else {
-        if (this.onStatusChange) this.onStatusChange(false);
+          }
+          if (interim && this.onTranscription) {
+            this.onTranscription(interim.trim(), false);
+          }
+          if (final) {
+            this.processFinalSpeech(final.trim());
+          }
+        };
+
+        this.webSpeechRecognition.onerror = (e) => {
+          console.warn("WebSpeech recognition notice (Vosk Local Stream active):", e.error);
+        };
+      } catch (err) {
+        console.warn("WebSpeech fallback init notice:", err);
       }
-    };
-
-    this.recognition.onerror = (event) => {
-      console.warn("Speech recognition error:", event.error);
-      if (event.error === "not-allowed") {
-        this.isListening = false;
-        if (this.onStatusChange) this.onStatusChange(false);
-        if (window.app) window.app.showToast("Microphone permission denied. Please allow mic in your browser.", "info");
-      } else if (event.error === "network" || event.error === "service-not-allowed") {
-        console.info("WebSpeech API network/service limitation detected on this browser. Activating Server STT Audio Fallback.");
-        this.startMediaRecorderFallback();
-      }
-    };
-
-    this.recognition.onresult = (event) => {
-      let interimTranscript = "";
-      let finalTranscript = "";
-
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript;
-        } else {
-          interimTranscript += transcript;
-        }
-      }
-
-      if (interimTranscript && this.onTranscription) {
-        this.onTranscription(interimTranscript.trim(), false);
-      }
-
-      if (finalTranscript) {
-        this.processFinalSpeech(finalTranscript.trim());
-      }
-    };
-  }
-
-  startMediaRecorderFallback() {
-    if (!this.microphoneStream || this.mediaRecorder) return;
-    try {
-      this.audioChunks = [];
-      const options = MediaRecorder.isTypeSupported("audio/webm") ? { mimeType: "audio/webm" } : {};
-      this.mediaRecorder = new MediaRecorder(this.microphoneStream, options);
-
-      this.mediaRecorder.ondataavailable = async (e) => {
-        if (e.data && e.data.size > 1000 && this.isListening) {
-          await this.sendAudioChunkToBackend(e.data);
-        }
-      };
-
-      // Record in 3.5s slices for continuous transcription
-      this.mediaRecorder.start(3500);
-      console.log("MediaRecorder local server transcription fallback started.");
-    } catch (e) {
-      console.warn("MediaRecorder fallback error:", e);
     }
   }
 
-  async sendAudioChunkToBackend(blob) {
+  async toggleListening() {
+    if (this.isListening) {
+      await this.stopListening();
+    } else {
+      await this.startListening();
+    }
+  }
+
+  async startListening() {
     try {
-      const res = await fetch("/api/transcribe", {
-        method: "POST",
-        headers: { "Content-Type": blob.type || "audio/webm" },
-        body: blob,
+      this.isListening = true;
+      this.sessionId = "session_" + Math.random().toString(36).substring(2, 9);
+
+      // 1. Request microphone access
+      this.microphoneStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.text && data.text.trim()) {
-          this.processFinalSpeech(data.text.trim());
-        }
-      }
-    } catch (err) {
-      console.warn("Audio chunk transcription error:", err);
-    }
-  }
 
-  async startAudioVisualizer(canvasElement) {
-    this.waveformCanvas = canvasElement;
-    if (!this.waveformCanvas) return;
-    this.waveformCtx = this.waveformCanvas.getContext("2d");
-
-    try {
-      if (!this.audioContext) {
-        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      }
+      // 2. Initialize AudioContext at 16kHz
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.audioContext = new AudioCtx({ sampleRate: 16000 });
       if (this.audioContext.state === "suspended") {
         await this.audioContext.resume();
       }
 
-      this.microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const source = this.audioContext.createMediaStreamSource(this.microphoneStream);
+      this.sourceNode = this.audioContext.createMediaStreamSource(this.microphoneStream);
+
+      // 3. Setup Analyser for visual waveform
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 64;
-      source.connect(this.analyser);
+      this.sourceNode.connect(this.analyser);
 
+      // 4. Setup PCM Audio Processor for real-time Vosk STT streaming
+      this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
+      this.sourceNode.connect(this.scriptProcessor);
+      this.scriptProcessor.connect(this.audioContext.destination);
+
+      this.pcmBufferQueue = [];
+      this.scriptProcessor.onaudioprocess = (e) => {
+        if (!this.isListening) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+
+        // Convert Float32 (-1.0 to +1.0) to 16-bit PCM Int16
+        const pcm16 = new Int16Array(inputData.length);
+        let sumSquares = 0;
+
+        for (let i = 0; i < inputData.length; i++) {
+          let s = Math.max(-1, Math.min(1, inputData[i]));
+          sumSquares += s * s;
+          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        }
+
+        // Calculate audio volume level
+        const rms = Math.sqrt(sumSquares / inputData.length);
+        const level = Math.min(100, Math.round(rms * 250));
+        if (this.onAudioLevel) this.onAudioLevel(level);
+
+        // Queue PCM bytes
+        this.pcmBufferQueue.push(pcm16.buffer);
+      };
+
+      // 5. Start real-time background PCM sender loop (~200ms)
+      this.startPcmSenderLoop();
+
+      // 6. Also start visualizer
       this.drawWaveform();
-    } catch (e) {
-      console.warn("Microphone visualizer initialization failed:", e);
-      // Fallback animated mock wave if direct stream was blocked
-      this.drawMockWaveform();
+
+      // 7. Optional WebSpeech start
+      if (this.webSpeechRecognition) {
+        try { this.webSpeechRecognition.start(); } catch (e) {}
+      }
+
+      if (this.onStatusChange) this.onStatusChange(true);
+      this.playChime("start");
+
+    } catch (err) {
+      console.error("Failed to start speech recognition:", err);
+      this.isListening = false;
+      if (this.onStatusChange) this.onStatusChange(false);
+      alert("Microphone permission was not granted or microphone is not available. Please allow mic in browser: " + err.message);
     }
+  }
+
+  startPcmSenderLoop() {
+    if (this.streamInterval) clearInterval(this.streamInterval);
+
+    let isSending = false;
+    let isFirst = true;
+
+    this.streamInterval = setInterval(async () => {
+      if (!this.isListening || isSending || this.pcmBufferQueue.length === 0) return;
+
+      isSending = true;
+      const chunks = this.pcmBufferQueue.splice(0, this.pcmBufferQueue.length);
+
+      // Merge chunks into single ArrayBuffer
+      const totalLength = chunks.reduce((acc, c) => acc + c.byteLength, 0);
+      const merged = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(new Uint8Array(chunk), offset);
+        offset += chunk.byteLength;
+      }
+
+      try {
+        const res = await fetch("/api/stream_stt", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "X-Session-ID": this.sessionId,
+            "X-Reset": isFirst ? "true" : "false",
+          },
+          body: merged,
+        });
+
+        isFirst = false;
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.final && data.text && data.text.trim()) {
+            this.processFinalSpeech(data.text.trim());
+          } else if (!data.final && data.text && data.text.trim()) {
+            if (this.onTranscription) {
+              this.onTranscription(data.text.trim(), false);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("PCM stream fetch warning:", e);
+      } finally {
+        isSending = false;
+      }
+    }, 180);
+  }
+
+  async stopListening() {
+    this.isListening = false;
+
+    if (this.streamInterval) {
+      clearInterval(this.streamInterval);
+      this.streamInterval = null;
+    }
+
+    if (this.scriptProcessor) {
+      try {
+        this.scriptProcessor.disconnect();
+        this.scriptProcessor = null;
+      } catch (e) {}
+    }
+
+    if (this.sourceNode) {
+      try {
+        this.sourceNode.disconnect();
+        this.sourceNode = null;
+      } catch (e) {}
+    }
+
+    if (this.microphoneStream) {
+      this.microphoneStream.getTracks().forEach((t) => t.stop());
+      this.microphoneStream = null;
+    }
+
+    if (this.webSpeechRecognition) {
+      try { this.webSpeechRecognition.stop(); } catch (e) {}
+    }
+
+    // Flush any remaining recognizer text from server
+    try {
+      const res = await fetch("/api/reset_stt", {
+        method: "POST",
+        headers: { "X-Session-ID": this.sessionId },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.text && data.text.trim()) {
+          this.processFinalSpeech(data.text.trim());
+        }
+      }
+    } catch (e) {}
+
+    if (this.onStatusChange) this.onStatusChange(false);
+    this.playChime("stop");
+  }
+
+  startAudioVisualizer(canvasElement) {
+    this.waveformCanvas = canvasElement;
+    if (!this.waveformCanvas) return;
+    this.waveformCtx = this.waveformCanvas.getContext("2d");
+    this.drawWaveform();
   }
 
   drawWaveform() {
-    if (!this.waveformCanvas || !this.waveformCtx || !this.analyser) return;
-
-    const bufferLength = this.analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
+    if (!this.waveformCanvas || !this.waveformCtx) return;
 
     const render = () => {
       this.animationFrameId = requestAnimationFrame(render);
-      this.analyser.getByteFrequencyData(dataArray);
-
       const width = this.waveformCanvas.width;
       const height = this.waveformCanvas.height;
       this.waveformCtx.clearRect(0, 0, width, height);
 
-      const barWidth = (width / bufferLength) * 1.8;
-      let x = 0;
+      if (this.isListening && this.analyser) {
+        const bufferLength = this.analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        this.analyser.getByteFrequencyData(dataArray);
 
-      for (let i = 0; i < bufferLength; i++) {
-        const barHeight = (dataArray[i] / 255) * height * 0.9 + 2;
+        const barWidth = (width / bufferLength) * 1.8;
+        let x = 0;
 
-        const gradient = this.waveformCtx.createLinearGradient(0, height, 0, 0);
-        if (this.isListening) {
+        for (let i = 0; i < bufferLength; i++) {
+          const barHeight = (dataArray[i] / 255) * height * 0.9 + 2;
+          const gradient = this.waveformCtx.createLinearGradient(0, height, 0, 0);
           gradient.addColorStop(0, "#ef4444");
           gradient.addColorStop(1, "#f43f5e");
-        } else {
-          gradient.addColorStop(0, "#4b4f6e");
-          gradient.addColorStop(1, "#646a88");
+
+          this.waveformCtx.fillStyle = gradient;
+          this.waveformCtx.beginPath();
+          this.waveformCtx.roundRect(x, height - barHeight, barWidth - 1, barHeight, [2, 2, 0, 0]);
+          this.waveformCtx.fill();
+
+          x += barWidth + 1;
         }
-
-        this.waveformCtx.fillStyle = gradient;
-        this.waveformCtx.beginPath();
-        this.waveformCtx.roundRect(x, height - barHeight, barWidth - 1, barHeight, [2, 2, 0, 0]);
-        this.waveformCtx.fill();
-
-        x += barWidth + 1;
+      } else {
+        // Idle subtle waveform
+        const bars = 14;
+        const barWidth = width / bars;
+        for (let i = 0; i < bars; i++) {
+          this.waveformCtx.fillStyle = "#3b4055";
+          this.waveformCtx.fillRect(i * barWidth, height - 3, barWidth - 2, 3);
+        }
       }
     };
     render();
-  }
-
-  drawMockWaveform() {
-    if (!this.waveformCanvas || !this.waveformCtx) return;
-    let step = 0;
-    const render = () => {
-      this.animationFrameId = requestAnimationFrame(render);
-      const width = this.waveformCanvas.width;
-      const height = this.waveformCanvas.height;
-      this.waveformCtx.clearRect(0, 0, width, height);
-
-      const bars = 16;
-      const barWidth = width / bars;
-      for (let i = 0; i < bars; i++) {
-        let barHeight = 4;
-        if (this.isListening) {
-          barHeight = Math.sin(step + i * 0.5) * 8 + 10;
-        }
-        this.waveformCtx.fillStyle = this.isListening ? "#ef4444" : "#4b4f6e";
-        this.waveformCtx.fillRect(i * barWidth, height - barHeight, barWidth - 2, barHeight);
-      }
-      step += 0.1;
-    };
-    render();
-  }
-
-  toggleListening() {
-    if (this.isListening) {
-      this.stopListening();
-    } else {
-      this.startListening();
-    }
-  }
-
-  startListening() {
-    if (!this.recognition) {
-      this.initSpeechRecognition();
-    }
-    if (!this.recognition) {
-      alert("Speech Recognition is not supported in this browser. Please use Chrome, Chromium, or Firefox with Web Speech API enabled.");
-      return;
-    }
-    try {
-      this.isListening = true;
-      this.recognition.start();
-      if (this.audioContext && this.audioContext.state === "suspended") {
-        this.audioContext.resume();
-      }
-    } catch (e) {
-      console.warn("Recognition already started or error:", e);
-    }
-  }
-
-  stopListening() {
-    this.isListening = false;
-    if (this.recognition) {
-      try {
-        this.recognition.stop();
-      } catch (e) {}
-    }
-    if (this.onStatusChange) this.onStatusChange(false);
-    this.playChime("stop");
   }
 
   /**
@@ -348,7 +394,7 @@ class VoiceEngine {
       return;
     }
 
-    // 7. Text Formatting Enhancements
+    // 8. Text Formatting Enhancements
     let formatted = text;
     formatted = formatted.replace(/\bnew line\b/gi, "\n");
     formatted = formatted.replace(/\bnew paragraph\b/gi, "\n\n");
@@ -358,7 +404,7 @@ class VoiceEngine {
     formatted = formatted.replace(/\bexclamation mark\b/gi, "!");
     formatted = formatted.replace(/\bbullet point\s*(.*)/gi, "- $1");
 
-    // Capitalize first letter if needed
+    // Capitalize first letter
     if (formatted.length > 0) {
       formatted = formatted.charAt(0).toUpperCase() + formatted.slice(1);
     }
@@ -374,7 +420,8 @@ class VoiceEngine {
   playChime(type) {
     if (!this.soundEffects) return;
     try {
-      const ctx = this.audioContext || new (window.AudioContext || window.webkitAudioContext)();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = this.audioContext || new AudioCtx();
       const now = ctx.currentTime;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -383,35 +430,31 @@ class VoiceEngine {
       gain.connect(ctx.destination);
 
       if (type === "chapter") {
-        // Glorious Major Chord
         osc.type = "sine";
-        osc.frequency.setValueAtTime(523.25, now); // C5
-        osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15); // E5
-        osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.3); // G5
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15);
+        osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.3);
         gain.gain.setValueAtTime(0.15, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
         osc.start(now);
         osc.stop(now + 0.5);
       } else if (type === "topic") {
-        // Emerald 2-tone Chime
         osc.type = "triangle";
-        osc.frequency.setValueAtTime(440, now); // A4
-        osc.frequency.exponentialRampToValueAtTime(587.33, now + 0.15); // D5
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(587.33, now + 0.15);
         gain.gain.setValueAtTime(0.12, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
         osc.start(now);
         osc.stop(now + 0.35);
       } else if (type === "thought") {
-        // Amber Quick Ping
         osc.type = "sine";
-        osc.frequency.setValueAtTime(659.25, now); // E5
-        osc.frequency.exponentialRampToValueAtTime(880, now + 0.1); // A5
+        osc.frequency.setValueAtTime(659.25, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
         gain.gain.setValueAtTime(0.12, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
         osc.start(now);
         osc.stop(now + 0.25);
       } else if (type === "start") {
-        // Subtle soft blip
         osc.type = "sine";
         osc.frequency.setValueAtTime(330, now);
         osc.frequency.exponentialRampToValueAtTime(440, now + 0.08);
@@ -428,9 +471,7 @@ class VoiceEngine {
         osc.start(now);
         osc.stop(now + 0.15);
       }
-    } catch (e) {
-      // Audio synthesis optional
-    }
+    } catch (e) {}
   }
 }
 

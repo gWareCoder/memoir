@@ -32,6 +32,48 @@ ATTACHMENTS_DIR = VAULT_DIR / "attachments"
 for folder in [CHAPTERS_DIR, TOPICS_DIR, THOUGHTS_DIR, ATTACHMENTS_DIR, STATIC_DIR]:
     folder.mkdir(parents=True, exist_ok=True)
 
+# Vosk Real-Time Offline Speech Model
+VOSK_MODEL_PATH = BASE_DIR / "model" / "vosk-model-small-en-us-0.15"
+vosk_model = None
+
+def ensure_vosk_model():
+    global vosk_model
+    if vosk_model is not None:
+        return vosk_model
+    model_dir = BASE_DIR / "model"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    target_path = model_dir / "vosk-model-small-en-us-0.15"
+    if not target_path.exists():
+        try:
+            print("📥 Downloading lightweight offline speech recognition model (40MB)...")
+            import urllib.request, zipfile
+            zip_path = model_dir / "model.zip"
+            urllib.request.urlretrieve("https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip", zip_path)
+            with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                zip_ref.extractall(model_dir)
+            if zip_path.exists():
+                zip_path.unlink()
+            print("✓ Offline speech model downloaded and ready.")
+        except Exception as err:
+            print("Notice on downloading Vosk model:", err)
+
+    if target_path.exists():
+        try:
+            from vosk import Model
+            vosk_model = Model(str(target_path))
+            print("✓ Vosk Real-Time Offline Speech Model loaded successfully!")
+        except Exception as e:
+            print("Vosk model initialization notice:", e)
+    return vosk_model
+
+try:
+    ensure_vosk_model()
+except Exception:
+    pass
+
+# Active streaming recognizers per client session
+active_sessions = {}
+
 
 def parse_frontmatter(content: str):
     """Extract YAML frontmatter and body from markdown content."""
@@ -602,6 +644,55 @@ class MemoirHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self.send_json({"success": False, "error": str(e)}, status=500)
                 return
+
+        # Real-time Streaming STT with Vosk
+        if path == "/api/stream_stt":
+            global vosk_model, active_sessions
+            if vosk_model is None:
+                if VOSK_MODEL_PATH.exists():
+                    try:
+                        from vosk import Model
+                        vosk_model = Model(str(VOSK_MODEL_PATH))
+                    except Exception as e:
+                        self.send_json({"final": False, "text": "", "error": str(e)})
+                        return
+                else:
+                    self.send_json({"final": False, "text": "", "error": "Vosk model not found"})
+                    return
+
+            session_id = self.headers.get("X-Session-ID", "default")
+            reset_flag = self.headers.get("X-Reset", "false").lower() == "true"
+
+            if reset_flag or session_id not in active_sessions:
+                from vosk import KaldiRecognizer
+                active_sessions[session_id] = KaldiRecognizer(vosk_model, 16000)
+
+            rec = active_sessions[session_id]
+
+            if not post_bytes:
+                self.send_json({"final": False, "text": ""})
+                return
+
+            if rec.AcceptWaveform(post_bytes):
+                res = json.loads(rec.Result())
+                text = res.get("text", "").strip()
+                self.send_json({"final": True, "text": text})
+            else:
+                part = json.loads(rec.PartialResult())
+                text = part.get("partial", "").strip()
+                self.send_json({"final": False, "text": text})
+            return
+
+        if path == "/api/reset_stt":
+            session_id = self.headers.get("X-Session-ID", "default")
+            text = ""
+            if session_id in active_sessions:
+                rec = active_sessions[session_id]
+                res = json.loads(rec.FinalResult())
+                text = res.get("text", "").strip()
+                del active_sessions[session_id]
+            self.send_json({"final": True, "text": text})
+            return
 
         try:
             data = json.loads(post_bytes.decode("utf-8"))
