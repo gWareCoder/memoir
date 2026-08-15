@@ -319,6 +319,42 @@ class VoiceEngine {
       });
     }
 
+    // 0a. Voice Trigger: "append to chapter [content]" or "add to chapter [content]"
+    const appendChapterMatch = text.match(/^(?:please\s+)?(?:append|add)(?:\s+this)?(?:\s+to)?(?:\s+(?:the|my))?\s+chapter(?:\s*[:-]?\s*(.*))?$/i);
+    if (appendChapterMatch) {
+      const content = (appendChapterMatch[1] || "").trim();
+      this.playChime("chapter");
+      if (this.onCommand) this.onCommand("append_chapter", content);
+      return;
+    }
+
+    // 0b. Voice Trigger: "append to topic [content]" or "add to topic [content]"
+    const appendTopicMatch = text.match(/^(?:please\s+)?(?:append|add)(?:\s+this)?(?:\s+to)?(?:\s+(?:the|my))?\s+topic(?:\s*[:-]?\s*(.*))?$/i);
+    if (appendTopicMatch) {
+      const content = (appendTopicMatch[1] || "").trim();
+      this.playChime("topic");
+      if (this.onCommand) this.onCommand("append_topic", content);
+      return;
+    }
+
+    // 0c. Voice Trigger: "append to thought [content]" or "add to thought [content]"
+    const appendThoughtMatch = text.match(/^(?:please\s+)?(?:append|add)(?:\s+this)?(?:\s+to)?(?:\s+(?:the|my))?\s+thought(?:\s*[:-]?\s*(.*))?$/i);
+    if (appendThoughtMatch) {
+      const content = (appendThoughtMatch[1] || "").trim();
+      this.playChime("thought");
+      if (this.onCommand) this.onCommand("append_thought", content);
+      return;
+    }
+
+    // 0d. Voice Trigger: "append to note [content]" or "append [content]"
+    const appendNoteMatch = text.match(/^(?:please\s+)?(?:append|add)(?:\s+this)?(?:\s+to)?(?:\s+(?:the|my|active|current))?\s+note(?:\s*[:-]?\s*(.*))?$/i);
+    if (appendNoteMatch) {
+      const content = (appendNoteMatch[1] || "").trim();
+      this.playChime("start");
+      if (this.onCommand) this.onCommand("append_note", content);
+      return;
+    }
+
     // 1. Voice Trigger: "chapter" or "new chapter" or "create chapter"
     const chapterMatch = text.match(/^(?:create\s+)?(?:new\s+)?chapter(?:\s*[:-]?\s*(.*))?$/i);
     if (chapterMatch) {

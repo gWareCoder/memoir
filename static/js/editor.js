@@ -178,25 +178,28 @@ class MemoirEditor {
     this.onContentChanged();
   }
 
-  appendSpeechText(speechText) {
+  appendSpeechText(speechText, asParagraph = false) {
     if (!this.textarea || !speechText) return;
     const val = this.textarea.value;
     const trimmed = speechText.trim();
 
-    // Check if we append at end or at cursor
-    const start = this.textarea.selectionStart;
-    const end = this.textarea.selectionEnd;
-
     let insertion = trimmed;
-    if (val.length > 0 && !val.endsWith("\n") && !val.endsWith(" ")) {
+    if (asParagraph && val.length > 0) {
+      if (!val.endsWith("\n\n")) {
+        insertion = (val.endsWith("\n") ? "\n" : "\n\n") + trimmed;
+      }
+    } else if (val.length > 0 && !val.endsWith("\n") && !val.endsWith(" ")) {
       insertion = " " + insertion;
     }
+
+    const start = this.textarea.selectionStart;
+    const end = this.textarea.selectionEnd;
 
     if (start !== end || start < val.length) {
       this.textarea.value = val.substring(0, start) + insertion + val.substring(end);
       this.textarea.selectionStart = this.textarea.selectionEnd = start + insertion.length;
     } else {
-      this.textarea.value = val + (val.endsWith("\n") ? "" : " ") + trimmed;
+      this.textarea.value = val + (asParagraph ? insertion : (val.endsWith("\n") ? "" : " ") + trimmed);
       this.textarea.selectionStart = this.textarea.selectionEnd = this.textarea.value.length;
     }
 

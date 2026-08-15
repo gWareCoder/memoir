@@ -276,6 +276,14 @@ class MemoirApp {
         this.saveTranscriptionToNote();
       } else if (type === "discard") {
         this.discardTranscription();
+      } else if (type === "append_chapter") {
+        await this.handleVoiceAppend("chapter", payload);
+      } else if (type === "append_topic") {
+        await this.handleVoiceAppend("topic", payload);
+      } else if (type === "append_thought") {
+        await this.handleVoiceAppend("thought", payload);
+      } else if (type === "append_note") {
+        await this.handleVoiceAppend("active", payload);
       } else if (type === "chapter") {
         await this.handleVoiceCreateChapter(payload || this.getBufferText());
         this.clearBuffer();
@@ -354,6 +362,71 @@ class MemoirApp {
     }
     this.clearBuffer();
     this.showToast("Transcription discarded", "info");
+  }
+
+  async handleVoiceAppend(targetType, payload) {
+    const textToAppend = (payload || this.getBufferText() || "").trim();
+    if (!textToAppend) {
+      this.showToast(`No content specified to append to ${targetType}. Speak your text first.`, "info");
+      return;
+    }
+
+    // 1. Locate the target note
+    let targetNote = null;
+
+    if (targetType === "chapter") {
+      if (this.activeNote && this.activeNote.type === "chapter") {
+        targetNote = this.activeNote;
+      } else if (this.activeChapter) {
+        targetNote = this.vaultData?.notes?.find((n) => n.type === "chapter" && (n.title.toLowerCase() === this.activeChapter.toLowerCase() || n.id.toLowerCase() === this.activeChapter.toLowerCase()));
+      }
+      if (!targetNote && this.vaultData?.notes) {
+        targetNote = this.vaultData.notes.filter((n) => n.type === "chapter")[0];
+      }
+    } else if (targetType === "topic") {
+      if (this.activeNote && this.activeNote.type === "topic") {
+        targetNote = this.activeNote;
+      } else if (this.activeTopic) {
+        targetNote = this.vaultData?.notes?.find((n) => n.type === "topic" && (n.title.toLowerCase() === this.activeTopic.toLowerCase() || n.id.toLowerCase() === this.activeTopic.toLowerCase()));
+      }
+      if (!targetNote && this.vaultData?.notes) {
+        targetNote = this.vaultData.notes.filter((n) => n.type === "topic")[0];
+      }
+    } else if (targetType === "thought") {
+      if (this.activeNote && this.activeNote.type === "thought") {
+        targetNote = this.activeNote;
+      } else if (this.vaultData?.notes) {
+        targetNote = this.vaultData.notes.filter((n) => n.type === "thought")[0];
+      }
+    } else {
+      targetNote = this.activeNote;
+    }
+
+    // If no note exists yet for this category, auto-create one with the text!
+    if (!targetNote) {
+      if (targetType === "chapter") {
+        await this.handleVoiceCreateChapter(textToAppend);
+      } else if (targetType === "topic") {
+        await this.handleVoiceCreateTopic(textToAppend);
+      } else if (targetType === "thought") {
+        await this.handleVoiceCreateThought(textToAppend);
+      } else {
+        this.showToast("No active note open. Create a Chapter or Thought first.", "info");
+      }
+      this.clearBuffer();
+      return;
+    }
+
+    // 2. Open note in editor if not already active
+    if (!this.activeNote || this.activeNote.id !== targetNote.id) {
+      await this.openNote(targetNote);
+    }
+
+    // 3. Append text to editor as a clean paragraph and auto-save
+    this.editor.appendSpeechText(textToAppend, true);
+    await this.editor.saveCurrentNote();
+    this.clearBuffer();
+    this.showToast(`📥 Appended to ${targetNote.type.toUpperCase()}: "${targetNote.title}"`, targetNote.type);
   }
 
   async handleVoiceCreateChapter(title) {

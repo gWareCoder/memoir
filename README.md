@@ -165,6 +165,9 @@ http://localhost:5432
 | **"Chapter The Quantum Mind"** | Starts a new Chapter | `vault/chapters/Chapter - The Quantum Mind.md` |
 | **"Topic Wave Function Collapse"** | Creates a Topic linked to Chapter | `vault/topics/Topic - Wave Function Collapse.md`<br>`chapter: "[[Chapter - The Quantum Mind]]"` |
 | **"Thought Superposition in biology"** | Creates an atomic Thought | `vault/thoughts/Thought - Superposition in biology.md`<br>`[[Topic - Wave Function Collapse]]` + Related Thoughts |
+| **"Append to chapter [Text]"** | Appends to active Chapter | Appends new paragraph to current Chapter |
+| **"Append to topic [Text]"** | Appends to active Topic | Appends new paragraph to current Topic |
+| **"Append to thought [Text]"** | Appends to active Thought | Appends new paragraph to current Thought |
 | **"Save transcription"** / **"Accept"** | Saves current speech to note | Inserts reviewed transcription buffer into note |
 | **"Discard"** / **"Cancel"** | Discards current speech | Clears transcription review buffer |
 | **"Link to Associative Memory"** | Inserts a wikilink | `[[Thought - Associative Memory]]` |
