@@ -1,6 +1,6 @@
 /**
  * Memoir - Markdown Editor, Live Preview & Wikilink Resolver Engine
- * Supports bi-directional wikilinks, syntax highlighting, autocompletion, and live voice text streaming.
+ * Supports bi-directional wikilinks, syntax highlighting, graph-aware autocompletion, and live voice text streaming.
  */
 
 class MemoirEditor {
@@ -15,6 +15,8 @@ class MemoirEditor {
 
     this.autocompletePopup = null;
     this.allVaultNotes = [];
+    this.graphData = null;
+    this.vaultData = null;
 
     // Callbacks
     this.onNoteSaved = null;      // (noteData) => void
@@ -25,8 +27,16 @@ class MemoirEditor {
     this.initEvents();
   }
 
+  setVaultData(vaultData) {
+    this.vaultData = vaultData;
+    this.allVaultNotes = vaultData?.notes || [];
+    this.graphData = vaultData?.graph || null;
+    this.updateGraphSuggestionChips();
+  }
+
   setVaultNotes(notes) {
     this.allVaultNotes = notes || [];
+    this.updateGraphSuggestionChips();
   }
 
   loadNote(note) {
@@ -35,6 +45,7 @@ class MemoirEditor {
       if (this.titleInput) this.titleInput.value = "";
       if (this.textarea) this.textarea.value = "";
       if (this.preview) this.preview.innerHTML = `<div style="color: var(--text-muted); font-style: italic; padding: 40px; text-align: center;">No note selected. Select a note from the sidebar or click the graph.</div>`;
+      this.updateGraphSuggestionChips();
       return;
     }
 
@@ -50,6 +61,7 @@ class MemoirEditor {
 
     this.renderPreview(text);
     this.updateBreadcrumbs();
+    this.updateGraphSuggestionChips();
   }
 
   updateBreadcrumbs() {
@@ -102,31 +114,35 @@ class MemoirEditor {
         }
       });
     });
+
+    this.updateWordCount(markdown);
+  }
+
+  updateWordCount(text) {
+    const wordCountEl = document.getElementById("note-word-count");
+    const readTimeEl = document.getElementById("note-read-time");
+    if (!wordCountEl) return;
+
+    const words = text.trim() ? (text.match(/\b\w+\b/g) || []).length : 0;
+    wordCountEl.textContent = `${words} word${words === 1 ? "" : "s"}`;
+
+    if (readTimeEl) {
+      const mins = Math.max(1, Math.ceil(words / 180));
+      readTimeEl.textContent = `${mins} min read`;
+    }
   }
 
   parseMarkdown(md) {
+    if (!md) return "";
+
     let text = md;
 
-    // Escape basic HTML
-    text = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // Headings
+    text = text.replace(/^# (.*$)/gim, '<h1 class="preview-h1">$1</h1>');
+    text = text.replace(/^## (.*$)/gim, '<h2 class="preview-h2">$1</h2>');
+    text = text.replace(/^### (.*$)/gim, '<h3 class="preview-h3">$1</h3>');
 
-    // Code blocks ```code```
-    text = text.replace(/```([\s\S]*?)```/g, (match, code) => {
-      return `<pre><code>${code.trim()}</code></pre>`;
-    });
-
-    // Inline code `code`
-    text = text.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-    // Headers
-    text = text.replace(/^### (.*$)/gim, "<h3>$1</h3>");
-    text = text.replace(/^## (.*$)/gim, "<h2>$1</h2>");
-    text = text.replace(/^# (.*$)/gim, "<h1>$1</h1>");
-
-    // Blockquotes
-    text = text.replace(/^\> (.*$)/gim, "<blockquote>$1</blockquote>");
-
-    // Bold & Italic
+    // Bold / Italic
     text = text.replace(/\*\*\*(.*?)\*\*\*/g, "<strong><em>$1</em></strong>");
     text = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
     text = text.replace(/\*(.*?)\*/g, "<em>$1</em>");
@@ -148,94 +164,49 @@ class MemoirEditor {
 
     // Paragraphs
     const lines = text.split("\n\n");
-    const formatted = lines
-      .map((block) => {
-        block = block.trim();
-        if (!block) return "";
-        if (block.startsWith("<h") || block.startsWith("<pre") || block.startsWith("<ul") || block.startsWith("<blockquote")) {
-          return block;
-        }
-        return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+    text = lines
+      .map((p) => {
+        p = p.trim();
+        if (!p) return "";
+        if (p.startsWith("<h") || p.startsWith("<ul") || p.startsWith("<li")) return p;
+        return `<p>${p.replace(/\n/g, "<br>")}</p>`;
       })
       .join("\n");
 
-    return formatted;
-  }
-
-  insertFormat(prefix, suffix = "") {
-    if (!this.textarea) return;
-    const start = this.textarea.selectionStart;
-    const end = this.textarea.selectionEnd;
-    const val = this.textarea.value;
-    const selected = val.substring(start, end);
-
-    const replacement = prefix + selected + suffix;
-    this.textarea.value = val.substring(0, start) + replacement + val.substring(end);
-    this.textarea.focus();
-    this.textarea.selectionStart = start + prefix.length;
-    this.textarea.selectionEnd = start + prefix.length + selected.length;
-
-    this.onContentChanged();
+    return text;
   }
 
   appendSpeechText(speechText, asParagraph = false) {
     if (!this.textarea || !speechText) return;
-    const val = this.textarea.value;
-    const trimmed = speechText.trim();
 
-    let insertion = trimmed;
-    if (asParagraph && val.length > 0) {
-      if (!val.endsWith("\n\n")) {
-        insertion = (val.endsWith("\n") ? "\n" : "\n\n") + trimmed;
-      }
-    } else if (val.length > 0 && !val.endsWith("\n") && !val.endsWith(" ")) {
-      insertion = " " + insertion;
-    }
+    const currentVal = this.textarea.value;
+    const separator = asParagraph ? "\n\n" : (currentVal.endsWith(" ") || currentVal === "" ? "" : " ");
 
-    const start = this.textarea.selectionStart;
-    const end = this.textarea.selectionEnd;
-
-    if (start !== end || start < val.length) {
-      this.textarea.value = val.substring(0, start) + insertion + val.substring(end);
-      this.textarea.selectionStart = this.textarea.selectionEnd = start + insertion.length;
-    } else {
-      this.textarea.value = val + (asParagraph ? insertion : (val.endsWith("\n") ? "" : " ") + trimmed);
-      this.textarea.selectionStart = this.textarea.selectionEnd = this.textarea.value.length;
-    }
-
+    this.textarea.value = currentVal + separator + speechText;
     this.onContentChanged();
     this.textarea.scrollTop = this.textarea.scrollHeight;
   }
 
   onContentChanged() {
     this.isDirty = true;
-    const content = this.textarea.value;
-    this.renderPreview(content);
-    this.updateStats(content);
+    const text = this.textarea.value;
+    this.renderPreview(text);
 
-    // Debounced Auto-Save
-    clearTimeout(this.saveTimeout);
+    // Auto-save debounce (800ms)
+    if (this.saveTimeout) clearTimeout(this.saveTimeout);
     this.saveTimeout = setTimeout(() => {
       this.saveCurrentNote();
     }, 800);
   }
 
-  updateStats(content) {
-    const wordCountEl = document.getElementById("note-word-count");
-    const readTimeEl = document.getElementById("note-read-time");
-    const words = (content.match(/\b\w+\b/g) || []).length;
-    const readTime = Math.ceil(words / 180);
-
-    if (wordCountEl) wordCountEl.textContent = `${words} words`;
-    if (readTimeEl) readTimeEl.textContent = `${readTime} min read`;
-  }
-
   async saveCurrentNote() {
     if (!this.activeNote || !this.isDirty) return;
+
     const content = this.textarea.value;
-    const title = this.titleInput ? this.titleInput.value.trim() : this.activeNote.title;
+    const title = this.titleInput ? this.titleInput.value : this.activeNote.title;
 
     const payload = {
+      path: this.activeNote.path,
       type: this.activeNote.type,
       title: title,
       body: content,
@@ -250,25 +221,169 @@ class MemoirEditor {
     }
   }
 
+  // =========================================================================
+  // Graph-Ranked Link Suggestion Engine
+  // =========================================================================
+
+  getRankedGraphSuggestions(query = "") {
+    if (!this.allVaultNotes || this.allVaultNotes.length === 0) return [];
+
+    const activeId = this.activeNote ? this.activeNote.id : null;
+    const activeType = this.activeNote ? this.activeNote.type : null;
+    const activeChapter = this.activeNote?.frontmatter?.chapter?.replace(/\[\[|\]\]/g, "") || (activeType === "chapter" ? this.activeNote.title : null);
+    const activeTopic = this.activeNote?.frontmatter?.topic?.replace(/\[\[|\]\]/g, "") || (activeType === "topic" ? this.activeNote.title : null);
+
+    const edges = this.graphData?.edges || [];
+    const directNeighborIds = new Set();
+    edges.forEach((e) => {
+      if (e.source === activeId) directNeighborIds.add(e.target);
+      if (e.target === activeId) directNeighborIds.add(e.source);
+    });
+
+    const q = (query || "").toLowerCase().trim();
+
+    const ranked = this.allVaultNotes
+      .filter((n) => n.id !== activeId)
+      .map((note) => {
+        let score = 0;
+        let relationBadge = "";
+        let badgeClass = "";
+
+        const titleLower = note.title.toLowerCase();
+        const idLower = note.id.toLowerCase();
+
+        // 1. Query matching
+        if (q) {
+          if (titleLower === q || idLower === q) score += 100;
+          else if (titleLower.startsWith(q)) score += 60;
+          else if (titleLower.includes(q)) score += 35;
+          else {
+            const tagMatch = (note.tags || []).some((t) => t.toLowerCase().includes(q));
+            if (tagMatch) score += 20;
+            else return null; // No match for search query
+          }
+        }
+
+        // 2. Direct Graph Neighbor
+        if (directNeighborIds.has(note.id) || directNeighborIds.has(note.title)) {
+          score += 45;
+          relationBadge = "Graph Neighbor";
+          badgeClass = "neighbor";
+        }
+
+        // 3. Shared Hierarchy Context
+        const noteChapter = note.frontmatter?.chapter?.replace(/\[\[|\]\]/g, "");
+        const noteTopic = note.frontmatter?.topic?.replace(/\[\[|\]\]/g, "");
+
+        if (activeChapter && noteChapter && activeChapter.toLowerCase() === noteChapter.toLowerCase()) {
+          score += 30;
+          if (!relationBadge) {
+            relationBadge = "Same Chapter";
+            badgeClass = "chapter";
+          }
+        }
+        if (activeTopic && noteTopic && activeTopic.toLowerCase() === noteTopic.toLowerCase()) {
+          score += 25;
+          if (!relationBadge) {
+            relationBadge = "Same Topic";
+            badgeClass = "neighbor";
+          }
+        }
+
+        // 4. Graph connection degree bonus
+        const connections = edges.filter((e) => e.source === note.id || e.target === note.id).length;
+        score += Math.min(connections * 2, 12);
+
+        return {
+          note,
+          score,
+          relationBadge,
+          badgeClass,
+          connections,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score);
+
+    return ranked;
+  }
+
+  updateGraphSuggestionChips() {
+    const chipsContainer = document.getElementById("suggested-links-chips");
+    const bar = document.getElementById("editor-suggested-links-bar");
+    if (!chipsContainer || !bar) return;
+
+    const ranked = this.getRankedGraphSuggestions("");
+    const topSuggestions = ranked.slice(0, 6);
+
+    if (topSuggestions.length === 0) {
+      chipsContainer.innerHTML = `<span style="color: var(--text-muted); font-style: italic; font-size: 11px;">Create more notes to discover graph suggestions</span>`;
+      return;
+    }
+
+    chipsContainer.innerHTML = topSuggestions
+      .map(
+        (item) => `
+        <button type="button" class="suggested-link-chip ${item.note.type}" data-title="${item.note.title}" title="Insert [[${item.note.title}]] (${item.relationBadge || item.connections + ' links'})">
+          <span class="chip-dot"></span>
+          <span>+ [[${item.note.title}]]</span>
+        </button>
+      `
+      )
+      .join("");
+
+    chipsContainer.querySelectorAll(".suggested-link-chip").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const title = btn.getAttribute("data-title");
+        this.insertWikilinkAtCursor(title);
+      });
+    });
+  }
+
+  insertWikilinkAtCursor(title) {
+    if (!this.textarea) return;
+    const cursorPos = this.textarea.selectionStart || this.textarea.value.length;
+    const textBefore = this.textarea.value.substring(0, cursorPos);
+    const textAfter = this.textarea.value.substring(cursorPos);
+
+    const prefix = textBefore.endsWith(" ") || textBefore.endsWith("\n") || textBefore === "" ? "" : " ";
+    const newText = textBefore + prefix + `[[${title}]] ` + textAfter;
+    this.textarea.value = newText;
+    const newCursor = cursorPos + prefix.length + title.length + 5;
+    this.textarea.selectionStart = this.textarea.selectionEnd = newCursor;
+    this.textarea.focus();
+    this.onContentChanged();
+  }
+
+  // =========================================================================
+  // Autocomplete Popup Setup & Interaction
+  // =========================================================================
+
   initAutocomplete() {
     this.autocompletePopup = document.createElement("div");
     this.autocompletePopup.className = "wikilink-autocomplete";
+    this.autocompletePopup.id = "wikilink-autocomplete-popup";
     document.body.appendChild(this.autocompletePopup);
   }
 
   initEvents() {
     if (this.textarea) {
-      this.textarea.addEventListener("input", (e) => {
+      this.textarea.addEventListener("input", () => {
         this.onContentChanged();
         this.checkWikilinkTrigger();
       });
 
       this.textarea.addEventListener("keydown", (e) => {
         if (this.autocompletePopup && this.autocompletePopup.style.display === "block") {
-          if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === "Escape") {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === "Tab" || e.key === "Escape") {
             this.handleAutocompleteKey(e);
           }
         }
+      });
+
+      this.textarea.addEventListener("blur", () => {
+        // Delay to allow clicking on an option
+        setTimeout(() => this.hideAutocomplete(), 200);
       });
     }
 
@@ -290,11 +405,11 @@ class MemoirEditor {
     const linkMatch = textBefore.match(/\[\[([^\]]*)$/);
 
     if (linkMatch) {
-      const query = linkMatch[1].toLowerCase();
-      const matches = this.allVaultNotes.filter((n) => n.title.toLowerCase().includes(query)).slice(0, 6);
+      const query = linkMatch[1];
+      const ranked = this.getRankedGraphSuggestions(query).slice(0, 7);
 
-      if (matches.length > 0) {
-        this.showAutocomplete(matches);
+      if (ranked.length > 0) {
+        this.showAutocomplete(ranked);
       } else {
         this.hideAutocomplete();
       }
@@ -303,27 +418,51 @@ class MemoirEditor {
     }
   }
 
-  showAutocomplete(notes) {
+  showAutocomplete(rankedItems) {
     if (!this.autocompletePopup || !this.textarea) return;
     const rect = this.textarea.getBoundingClientRect();
 
-    this.autocompletePopup.innerHTML = notes
-      .map(
-        (n, idx) => `
-        <div class="wikilink-option ${idx === 0 ? "active" : ""}" data-title="${n.title}">
-          <span class="tree-dot ${n.type}"></span>
-          <span>${n.title}</span>
-        </div>
-      `
-      )
-      .join("");
+    this.autocompletePopup.innerHTML = `
+      <div class="wikilink-autocomplete-header">
+        <span>Graph Link Suggestions</span>
+        <span style="font-size: 9px; color: var(--accent-primary); font-weight: 600;">✦ GRAPH RANKED</span>
+      </div>
+      <div class="wikilink-autocomplete-list">
+        ${rankedItems
+          .map(
+            (item, idx) => `
+          <div class="wikilink-option ${idx === 0 ? "active" : ""}" data-title="${item.note.title}">
+            <div class="wikilink-option-left">
+              <span class="tree-dot ${item.note.type}"></span>
+              <span style="font-weight: 500;">${item.note.title}</span>
+            </div>
+            <div class="wikilink-option-right">
+              ${item.relationBadge ? `<span class="wikilink-rel-badge ${item.badgeClass}">✦ ${item.relationBadge}</span>` : ""}
+              <span class="wikilink-conn-count">${item.connections} link${item.connections === 1 ? "" : "s"}</span>
+            </div>
+          </div>
+        `
+          )
+          .join("")}
+      </div>
+      <div class="wikilink-autocomplete-footer">
+        <span><kbd>↑↓</kbd> Select</span>
+        <span><kbd>Enter</kbd> / <kbd>Tab</kbd> Link</span>
+        <span><kbd>Esc</kbd> Close</span>
+      </div>
+    `;
 
-    this.autocompletePopup.style.left = `${rect.left + 40}px`;
-    this.autocompletePopup.style.top = `${rect.top + 60}px`;
+    // Position popup near the editor
+    const topPos = Math.min(window.innerHeight - 300, Math.max(10, rect.top + 50));
+    const leftPos = Math.min(window.innerWidth - 340, Math.max(20, rect.left + 30));
+
+    this.autocompletePopup.style.left = `${leftPos}px`;
+    this.autocompletePopup.style.top = `${topPos}px`;
     this.autocompletePopup.style.display = "block";
 
     this.autocompletePopup.querySelectorAll(".wikilink-option").forEach((opt) => {
-      opt.addEventListener("click", () => {
+      opt.addEventListener("mousedown", (e) => {
+        e.preventDefault();
         this.insertWikilinkOption(opt.getAttribute("data-title"));
       });
     });
@@ -343,11 +482,13 @@ class MemoirEditor {
       e.preventDefault();
       const nextIdx = (activeIdx + 1) % options.length;
       options.forEach((o, i) => o.classList.toggle("active", i === nextIdx));
+      options[nextIdx]?.scrollIntoView({ block: "nearest" });
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       const prevIdx = (activeIdx - 1 + options.length) % options.length;
       options.forEach((o, i) => o.classList.toggle("active", i === prevIdx));
-    } else if (e.key === "Enter") {
+      options[prevIdx]?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
       if (options[activeIdx]) {
         this.insertWikilinkOption(options[activeIdx].getAttribute("data-title"));

@@ -743,8 +743,8 @@ class MemoirApp {
     this.renderFileTree();
     this.renderStats();
 
-    // Update Editor note list for wikilink autocomplete
-    this.editor.setVaultNotes(data.notes);
+    // Update Editor note and graph list for graph-ranked wikilink autocomplete
+    this.editor.setVaultData(data);
 
     // Update Graph Simulation
     if (reloadGraph && this.graph) {
