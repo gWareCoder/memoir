@@ -278,14 +278,53 @@
       <input type="text" id="note-title-input" class="note-title-input" placeholder="Untitled Note">
     </div>
 
-    <!-- Real-time Voice Live Stream Banner -->
-    <div class="voice-live-banner" id="voice-live-banner">
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span class="status-dot" style="background: var(--rec-red);"></span>
-        <span style="font-weight: 600; font-size: 12px;">Transcribing Voice:</span>
+    <!-- Real-time Voice Live Stream & Review Console -->
+    <div class="transcription-review-dock" id="transcription-review-dock">
+      <div class="review-dock-header">
+        <div class="review-dock-title">
+          <span class="status-dot rec-dot"></span>
+          <span style="font-weight: 600; font-size: 12px;">Live Transcription</span>
+          <span class="review-word-badge" id="review-word-badge">0 words</span>
+          <span class="command-cue-badge" id="voice-live-cue" style="display: none;">Command</span>
+        </div>
+        <div class="review-dock-mode-toggle">
+          <label class="mode-toggle-label" title="Toggle between Review & Save vs Instant Auto-Stream">
+            <input type="checkbox" id="review-mode-toggle" checked>
+            <span class="mode-toggle-text">Review Mode</span>
+          </label>
+        </div>
       </div>
-      <span class="voice-live-text" id="voice-live-text">Listening...</span>
-      <span class="command-cue-badge" id="voice-live-cue" style="display: none;">Command</span>
+
+      <!-- Editable transcription review box -->
+      <div class="review-input-wrapper">
+        <textarea id="transcription-buffer-input" class="transcription-buffer-input" rows="2" placeholder="Spoken words will appear here. Edit or click Save / Discard..."></textarea>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="review-dock-actions">
+        <div class="review-actions-left">
+          <button class="review-btn save-btn" id="btn-save-transcript-note" title="Insert into active note (Ctrl+Enter)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            <span>Save to Note</span>
+          </button>
+          <button class="review-btn thought-btn" id="btn-save-transcript-thought" title="Save as new Thought">
+            <span>💡 As Thought</span>
+          </button>
+          <button class="review-btn topic-btn" id="btn-save-transcript-topic" title="Save as new Topic">
+            <span>🌿 As Topic</span>
+          </button>
+          <button class="review-btn chapter-btn" id="btn-save-transcript-chapter" title="Save as new Chapter">
+            <span>📖 As Chapter</span>
+          </button>
+        </div>
+
+        <div class="review-actions-right">
+          <button class="review-btn discard-btn" id="btn-discard-transcript" title="Discard this transcription (Esc)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            <span>Discard</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Markdown Toolbar -->
@@ -353,6 +392,14 @@
           <div class="command-card">
             <div class="command-phrase">"New line" / "New paragraph" / "Bullet point ..."</div>
             <div class="command-desc">Controls line breaks, paragraphs, and list items seamlessly during voice flow.</div>
+          </div>
+          <div class="command-card">
+            <div class="command-phrase">"Save transcription" / "Save to note" / "Accept"</div>
+            <div class="command-desc">Confirms and inserts the current transcription buffer into the active note. (Shortcut: <kbd>Ctrl</kbd>+<kbd>Enter</kbd>)</div>
+          </div>
+          <div class="command-card">
+            <div class="command-phrase">"Discard" / "Cancel transcription" / "Clear"</div>
+            <div class="command-desc">Discards and clears the current spoken transcription buffer. (Shortcut: <kbd>Esc</kbd>)</div>
           </div>
           <div class="command-card">
             <div class="command-phrase">"Pause recording" / "Stop transcription"</div>

@@ -286,7 +286,20 @@ class VoiceEngine {
       return;
     }
 
-    // 6. Voice Control Commands: "stop recording" / "pause recording"
+    // 6. Voice Save & Discard Controls
+    if (/^(?:save|save transcription|save to note|accept|insert|confirm)$/i.test(lower)) {
+      this.playChime("start");
+      if (this.onCommand) this.onCommand("save", text);
+      return;
+    }
+
+    if (/^(?:discard|discard transcription|cancel|clear|clear transcription|delete transcription)$/i.test(lower)) {
+      this.playChime("stop");
+      if (this.onCommand) this.onCommand("discard", text);
+      return;
+    }
+
+    // 7. Voice Control Commands: "stop recording" / "pause recording"
     if (lower === "stop recording" || lower === "pause recording" || lower === "stop transcription") {
       this.stopListening();
       return;

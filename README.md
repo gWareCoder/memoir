@@ -106,13 +106,20 @@ graph TD
 
 ## ✨ Key Features
 
-- **🎙️ Continuous Local Voice Dictation**: Hands-free voice transcription with live audio waveform bars.
+- **🎙️ Live Transcription Review & Save / Discard Console**:
+  - Review transcribed speech in real-time before committing it to your notes.
+  - **Save to Note** (or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>): Appends the reviewed text directly to the active note.
+  - **Save as Thought / Topic / Chapter**: 1-click conversion of spoken text into structured knowledge nodes.
+  - **Discard** (or <kbd>Esc</kbd>): Immediately clears the transcription buffer without altering files.
+  - **Review Mode vs Auto-Stream Toggle**: Switch between explicit confirmation or direct auto-dictation.
 - **🗣️ Natural Voice Commands**:
   - Say **"Chapter [Title]"** to start a new Chapter document.
   - Say **"Topic [Title]"** to create a Topic linked to the active Chapter.
   - Say **"Thought [Text]"** to create an atomic Thought note linked to topics and related thoughts.
   - Say **"Link to [Note]"** to insert `[[Note Name]]` wikilinks.
   - Say **"Tag [Keyword]"** to add `#keyword` tags.
+  - Say **"Save transcription" / "Accept"** to save current speech into the active note hands-free.
+  - Say **"Discard" / "Cancel"** to clear the transcription buffer hands-free.
 - **🌐 Obsidian-Grade Interactive Knowledge Graph**:
   - Color-coded glowing halos (🟣 Chapters, 🟢 Topics, 🟠 Thoughts).
   - Hover tooltip cards showing word count, connection statistics, and note excerpts.
@@ -158,6 +165,8 @@ http://localhost:5432
 | **"Chapter The Quantum Mind"** | Starts a new Chapter | `vault/chapters/Chapter - The Quantum Mind.md` |
 | **"Topic Wave Function Collapse"** | Creates a Topic linked to Chapter | `vault/topics/Topic - Wave Function Collapse.md`<br>`chapter: "[[Chapter - The Quantum Mind]]"` |
 | **"Thought Superposition in biology"** | Creates an atomic Thought | `vault/thoughts/Thought - Superposition in biology.md`<br>`[[Topic - Wave Function Collapse]]` + Related Thoughts |
+| **"Save transcription"** / **"Accept"** | Saves current speech to note | Inserts reviewed transcription buffer into note |
+| **"Discard"** / **"Cancel"** | Discards current speech | Clears transcription review buffer |
 | **"Link to Associative Memory"** | Inserts a wikilink | `[[Thought - Associative Memory]]` |
 | **"Tag neuroscience"** | Adds a tag | `#neuroscience` |
 | **"New line"** / **"New paragraph"** | Formatting | Inserts `\n` or `\n\n` |
@@ -171,6 +180,8 @@ http://localhost:5432
 | Shortcut | Action |
 | :--- | :--- |
 | <kbd>Ctrl</kbd> + <kbd>M</kbd> | Toggle Voice Recording / Transcription |
+| <kbd>Ctrl</kbd> + <kbd>Enter</kbd> | Save transcription buffer into active note |
+| <kbd>Esc</kbd> | Discard transcription buffer |
 | <kbd>Ctrl</kbd> + <kbd>1</kbd> | Switch to Full Knowledge Graph View |
 | <kbd>Ctrl</kbd> + <kbd>2</kbd> | Switch to Markdown Editor View |
 | <kbd>Ctrl</kbd> + <kbd>3</kbd> | Switch to Split View (Editor + Graph) |

@@ -18,6 +18,9 @@ class MemoirApp {
     this.voice = window.voiceEngine;
     this.storage = window.storageService;
 
+    this.transcriptionBuffer = "";
+    this.isReviewMode = localStorage.getItem("memoir_review_mode") !== "false"; // default true
+
     this.speechHistory = [];
   }
 
@@ -91,9 +94,21 @@ class MemoirApp {
     const voiceStatusText = document.getElementById("voice-status-text");
     const transcriptPreview = document.getElementById("voice-transcript-preview");
     const waveformCanvas = document.getElementById("waveform-canvas");
-    const liveBanner = document.getElementById("voice-live-banner");
-    const liveText = document.getElementById("voice-live-text");
+    const reviewDock = document.getElementById("transcription-review-dock");
+    const bufferInput = document.getElementById("transcription-buffer-input");
+    const wordBadge = document.getElementById("review-word-badge");
+    const reviewModeToggle = document.getElementById("review-mode-toggle");
     const liveCue = document.getElementById("voice-live-cue");
+
+    // Initialize Review Mode toggle
+    if (reviewModeToggle) {
+      reviewModeToggle.checked = this.isReviewMode;
+      reviewModeToggle.addEventListener("change", (e) => {
+        this.isReviewMode = e.target.checked;
+        localStorage.setItem("memoir_review_mode", this.isReviewMode);
+        this.showToast(this.isReviewMode ? "Review Mode enabled (Confirm before saving)" : "Stream Mode enabled (Instant auto-append)", "info");
+      });
+    }
 
     // Init Audio visualizer
     if (waveformCanvas) {
@@ -110,14 +125,16 @@ class MemoirApp {
       if (voicePill) {
         voicePill.classList.toggle("recording", isListening);
       }
+      if (reviewDock) {
+        reviewDock.classList.toggle("recording-active", isListening);
+      }
       if (voiceStatusText) {
         voiceStatusText.textContent = isListening ? "Listening..." : "Mic Idle";
       }
       if (transcriptPreview && !isListening) {
-        transcriptPreview.textContent = 'Say "Chapter", "Topic", or "Thought" to dictate...';
-      }
-      if (liveBanner) {
-        liveBanner.classList.toggle("visible", isListening);
+        transcriptPreview.textContent = this.transcriptionBuffer
+          ? `Buffer: "${this.transcriptionBuffer.slice(0, 35)}..."`
+          : 'Say "Chapter", "Topic", or "Thought" to dictate...';
       }
     };
 
@@ -125,34 +142,122 @@ class MemoirApp {
       if (transcriptPreview) {
         transcriptPreview.textContent = text;
       }
-      if (liveText) {
-        liveText.textContent = text;
-      }
       if (liveCue) {
         liveCue.style.display = "none";
       }
 
       if (isFinal) {
-        // Append text to currently open note
-        if (this.activeNote) {
-          this.editor.appendSpeechText(text);
+        if (this.isReviewMode) {
+          // Accumulate in buffer for user review
+          if (this.transcriptionBuffer) {
+            this.transcriptionBuffer += " " + text;
+          } else {
+            this.transcriptionBuffer = text;
+          }
+          if (bufferInput) {
+            bufferInput.value = this.transcriptionBuffer;
+            bufferInput.scrollTop = bufferInput.scrollHeight;
+          }
+          this.updateBufferStats();
+        } else {
+          // Instant Stream Mode
+          if (this.activeNote) {
+            this.editor.appendSpeechText(text);
+          }
+          if (bufferInput) {
+            bufferInput.value = text;
+          }
+          this.updateBufferStats();
+        }
+      } else {
+        // Interim live text preview in review dock if empty or typing
+        if (bufferInput && !this.transcriptionBuffer) {
+          bufferInput.placeholder = text + "...";
         }
       }
     };
 
-    // Process Voice Commands ("chapter", "topic", "thought", "link", "tag")
+    // User manual edits in the review dock textarea
+    if (bufferInput) {
+      bufferInput.addEventListener("input", (e) => {
+        this.transcriptionBuffer = e.target.value;
+        this.updateBufferStats();
+      });
+
+      bufferInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey || !e.shiftKey)) {
+          e.preventDefault();
+          this.saveTranscriptionToNote();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          this.discardTranscription();
+        }
+      });
+    }
+
+    // Save to Note Button
+    document.getElementById("btn-save-transcript-note")?.addEventListener("click", () => {
+      this.saveTranscriptionToNote();
+    });
+
+    // Save as Thought Button
+    document.getElementById("btn-save-transcript-thought")?.addEventListener("click", () => {
+      const text = this.getBufferText();
+      if (!text) {
+        this.showToast("Transcription buffer is empty", "info");
+        return;
+      }
+      this.handleVoiceCreateThought(text);
+      this.clearBuffer();
+    });
+
+    // Save as Topic Button
+    document.getElementById("btn-save-transcript-topic")?.addEventListener("click", () => {
+      const text = this.getBufferText();
+      if (!text) {
+        this.showToast("Transcription buffer is empty", "info");
+        return;
+      }
+      this.handleVoiceCreateTopic(text);
+      this.clearBuffer();
+    });
+
+    // Save as Chapter Button
+    document.getElementById("btn-save-transcript-chapter")?.addEventListener("click", () => {
+      const text = this.getBufferText();
+      if (!text) {
+        this.showToast("Transcription buffer is empty", "info");
+        return;
+      }
+      this.handleVoiceCreateChapter(text);
+      this.clearBuffer();
+    });
+
+    // Discard Button
+    document.getElementById("btn-discard-transcript")?.addEventListener("click", () => {
+      this.discardTranscription();
+    });
+
+    // Process Voice Commands ("chapter", "topic", "thought", "link", "tag", "save", "discard")
     this.voice.onCommand = async (type, payload) => {
       if (liveCue) {
         liveCue.style.display = "inline-block";
         liveCue.textContent = `Command: ${type.toUpperCase()}`;
       }
 
-      if (type === "chapter") {
-        await this.handleVoiceCreateChapter(payload);
+      if (type === "save") {
+        this.saveTranscriptionToNote();
+      } else if (type === "discard") {
+        this.discardTranscription();
+      } else if (type === "chapter") {
+        await this.handleVoiceCreateChapter(payload || this.getBufferText());
+        this.clearBuffer();
       } else if (type === "topic") {
-        await this.handleVoiceCreateTopic(payload);
+        await this.handleVoiceCreateTopic(payload || this.getBufferText());
+        this.clearBuffer();
       } else if (type === "thought") {
-        await this.handleVoiceCreateThought(payload);
+        await this.handleVoiceCreateThought(payload || this.getBufferText());
+        this.clearBuffer();
       } else if (type === "link") {
         if (this.activeNote) {
           this.editor.appendSpeechText(` [[${payload}]]`);
@@ -169,9 +274,59 @@ class MemoirApp {
     // Log speech in history
     this.voice.onSpeechLog = (entry) => {
       this.speechHistory.unshift(entry);
-      if (this.speechHistory.length > 20) this.speechHistory.pop();
+      if (this.speechHistory.length > 25) this.speechHistory.pop();
       this.renderSpeechLog();
     };
+  }
+
+  getBufferText() {
+    const bufferInput = document.getElementById("transcription-buffer-input");
+    return bufferInput ? bufferInput.value.trim() : (this.transcriptionBuffer || "").trim();
+  }
+
+  clearBuffer() {
+    this.transcriptionBuffer = "";
+    const bufferInput = document.getElementById("transcription-buffer-input");
+    if (bufferInput) {
+      bufferInput.value = "";
+      bufferInput.placeholder = "Spoken words will appear here. Edit or click Save / Discard...";
+    }
+    this.updateBufferStats();
+  }
+
+  updateBufferStats() {
+    const text = this.getBufferText();
+    const wordBadge = document.getElementById("review-word-badge");
+    const words = text ? (text.match(/\b\w+\b/g) || []).length : 0;
+    if (wordBadge) {
+      wordBadge.textContent = `${words} word${words === 1 ? "" : "s"}`;
+    }
+  }
+
+  saveTranscriptionToNote() {
+    const text = this.getBufferText();
+    if (!text) {
+      this.showToast("Transcription buffer is empty. Speak to dictate first.", "info");
+      return;
+    }
+
+    if (this.activeNote) {
+      this.editor.appendSpeechText(text);
+      this.showToast(`Saved to ${this.activeNote.title}`, "info");
+      this.clearBuffer();
+    } else {
+      this.showToast("No active note open. Create a Chapter or Thought first.", "info");
+    }
+  }
+
+  discardTranscription() {
+    const text = this.getBufferText();
+    if (!text) {
+      this.clearBuffer();
+      return;
+    }
+    this.clearBuffer();
+    this.showToast("Transcription discarded", "info");
   }
 
   async handleVoiceCreateChapter(title) {
@@ -424,16 +579,57 @@ class MemoirApp {
     }
 
     logContainer.innerHTML = this.speechHistory
-      .slice(0, 6)
+      .slice(0, 8)
       .map(
-        (entry) => `
-      <li style="padding: 4px 0; border-bottom: 1px solid var(--border-subtle); font-size: 11px;">
-        <span style="color: var(--text-muted);">${entry.time}:</span>
-        <span style="color: var(--text-secondary);">${entry.text}</span>
+        (entry, idx) => `
+      <li class="voice-capture-item" data-idx="${idx}">
+        <div class="voice-capture-header">
+          <span>🎙️ Voice Capture</span>
+          <span>${entry.time}</span>
+        </div>
+        <div class="voice-capture-text">${entry.text}</div>
+        <div class="voice-capture-actions">
+          <button class="mini-action-btn insert-log-btn" title="Insert into active note">+ Insert</button>
+          <button class="mini-action-btn thought-log-btn" title="Create Thought">💡 Thought</button>
+          <button class="mini-action-btn discard discard-log-btn" title="Discard">✕</button>
+        </div>
       </li>
     `
       )
       .join("");
+
+    logContainer.querySelectorAll(".insert-log-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const item = btn.closest(".voice-capture-item");
+        const idx = Number(item.getAttribute("data-idx"));
+        const entry = this.speechHistory[idx];
+        if (entry && this.activeNote) {
+          this.editor.appendSpeechText(entry.text);
+          this.showToast(`Inserted "${entry.text.slice(0, 20)}..."`, "info");
+        }
+      });
+    });
+
+    logContainer.querySelectorAll(".thought-log-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const item = btn.closest(".voice-capture-item");
+        const idx = Number(item.getAttribute("data-idx"));
+        const entry = this.speechHistory[idx];
+        if (entry) {
+          this.handleVoiceCreateThought(entry.text);
+        }
+      });
+    });
+
+    logContainer.querySelectorAll(".discard-log-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const item = btn.closest(".voice-capture-item");
+        const idx = Number(item.getAttribute("data-idx"));
+        this.speechHistory.splice(idx, 1);
+        this.renderSpeechLog();
+        this.showToast("Voice capture discarded", "info");
+      });
+    });
   }
 
   switchView(viewName) {
