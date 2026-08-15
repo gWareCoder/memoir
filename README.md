@@ -194,6 +194,24 @@ http://localhost:5432
 
 ---
 
+## 🖥️ Standalone App Mode (No Browser Address Bar)
+
+You can launch Memoir as a clean standalone desktop app without the Chromium address bar, tabs, or bookmarks:
+
+```bash
+# 1-Click Standalone Desktop Launcher
+./run.sh
+```
+
+Or from your Linux desktop / application menu, click **Memoir** (`Memoir.desktop`).
+
+Direct Chromium command:
+```bash
+chromium --app=http://localhost:5432 --class=Memoir --name=Memoir
+```
+
+---
+
 ## 📂 Vault Directory Structure
 
 ```
