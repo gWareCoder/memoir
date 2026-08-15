@@ -23,24 +23,24 @@ Memoir operates entirely on your local machine with zero external cloud dependen
 
 ```mermaid
 flowchart TD
-    A[🎙️ User Speech Input] --> B[Web Audio API Analyser]
-    B -->|Real-time Frequency Data| C[Waveform Canvas Visualizer]
-    A --> D[Web Speech Recognition Engine]
-    D -->|Continuous Stream| E[Natural Language Intent Parser]
+    A["🎙️ User Speech Input"] --> B["Web Audio API Analyser"]
+    B -->|"Real-time Audio Data"| C["Waveform Visualizer"]
+    A --> D["Speech Recognition Engine"]
+    D -->|"Continuous Text Stream"| E["Natural Language Intent Parser"]
     
-    E -->|'Chapter [Title]'| F[📖 Chapter Engine]
-    E -->|'Topic [Title]'| G[🌿 Topic Engine]
-    E -->|'Thought [Text]'| H[💡 Thought Engine]
-    E -->|'Link to [Note]'| I[🔗 Wikilink Injector]
-    E -->|'Tag [Keyword]'| J[🏷️ Tag Injector]
-    E -->|Regular Dictation| K[📝 Active Note Stream]
+    E -->|"Chapter title"| F["📖 Chapter Engine"]
+    E -->|"Topic title"| G["🌿 Topic Engine"]
+    E -->|"Thought text"| H["💡 Thought Engine"]
+    E -->|"Link to note"| I["🔗 Wikilink Injector"]
+    E -->|"Tag keyword"| J["🏷️ Tag Injector"]
+    E -->|"Regular dictation"| K["📝 Active Note Stream"]
     
-    F -->|Write .md| L[(Vault File System)]
-    G -->|Link [[Chapter]] & Write .md| L
-    H -->|Link [[Topic]] & Discover Related| L
-    I -->|Insert [[Note]]| L
-    J -->|Insert #tag| L
-    K -->|Append text| L
+    F -->|"Write .md"| L[("Vault File System")]
+    G -->|"Link Chapter & Write .md"| L
+    H -->|"Link Topic & Discover Related"| L
+    I -->|"Insert Wikilink"| L
+    J -->|"Insert Tag"| L
+    K -->|"Append Text"| L
 ```
 
 ---
@@ -67,18 +67,18 @@ graph TD
         TH4["💡 40Hz Resonance in Memory"]
     end
 
-    C1 -->|Contains| T1
-    C1 -->|Contains| T2
-    C2 -->|Contains| T3
+    C1 -->|"Contains"| T1
+    C1 -->|"Contains"| T2
+    C2 -->|"Contains"| T3
 
-    T1 -->|Context for| TH1
-    T1 -->|Context for| TH2
-    T2 -->|Context for| TH3
-    T3 -->|Context for| TH4
+    T1 -->|"Context for"| TH1
+    T1 -->|"Context for"| TH2
+    T2 -->|"Context for"| TH3
+    T3 -->|"Context for"| TH4
 
-    TH1 -.->|Auto-Related Similarity| TH2
-    TH1 -.->|Cross-Link| TH4
-    TH3 -.->|Related| TH1
+    TH1 -.->|"Similarity Match"| TH2
+    TH1 -.->|"Cross Link"| TH4
+    TH3 -.->|"Related"| TH1
 
     classDef chapterStyle fill:#8b5cf6,stroke:#a855f7,stroke-width:2px,color:#fff;
     classDef topicStyle fill:#059669,stroke:#10b981,stroke-width:2px,color:#fff;
