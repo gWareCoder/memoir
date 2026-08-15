@@ -1,8 +1,53 @@
 /**
- * Memoir - Voice Recognition & Speech Intelligence Engine
- * Features hardware-independent Web Audio capture, real-time downsampling to 16kHz PCM,
- * direct streaming to local Vosk STT engine, and live audio visualizer.
+ * Converts English number words to numeric digits (e.g. "one" -> "1", "twenty five" -> "25")
  */
+function convertSpokenNumbersToDigits(str) {
+  if (!str) return str;
+
+  const compoundTens = {
+    twenty: 20, thirty: 30, forty: 40, fourty: 40,
+    fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90
+  };
+  const compoundOnes = {
+    zero: 0, one: 1, first: 1, two: 2, second: 2, three: 3, third: 3,
+    four: 4, fourth: 4, five: 5, fifth: 5, six: 6, sixth: 6,
+    seven: 7, seventh: 7, eight: 8, eighth: 8, nine: 9, ninth: 9
+  };
+
+  let result = str;
+
+  // 1. Replace compound numbers (e.g. "twenty one", "twenty-one" -> 21)
+  for (const [tenWord, tenVal] of Object.entries(compoundTens)) {
+    for (const [oneWord, oneVal] of Object.entries(compoundOnes)) {
+      const pattern = new RegExp(`\\b${tenWord}[\\s\\-]+${oneWord}\\b`, "gi");
+      result = result.replace(pattern, (tenVal + oneVal).toString());
+    }
+    // Standalone tens
+    const standalonePattern = new RegExp(`\\b${tenWord}\\b`, "gi");
+    result = result.replace(standalonePattern, tenVal.toString());
+  }
+
+  // 2. Replace single numbers and teens
+  const singleMap = {
+    zero: 0, one: 1, first: 1, two: 2, second: 2, three: 3, third: 3,
+    four: 4, fourth: 4, five: 5, fifth: 5, six: 6, sixth: 6,
+    seven: 7, seventh: 7, eight: 8, eighth: 8, nine: 9, ninth: 9,
+    ten: 10, tenth: 10, eleven: 11, eleventh: 11, twelve: 12, twelfth: 12,
+    thirteen: 13, thirteenth: 13, fourteen: 14, fourteenth: 14,
+    fifteen: 15, fifteenth: 15, sixteen: 16, sixteenth: 16,
+    seventeen: 17, seventeenth: 17, eighteen: 18, eighteenth: 18,
+    nineteen: 19, nineteenth: 19, hundred: 100, hundredth: 100
+  };
+
+  for (const [word, val] of Object.entries(singleMap)) {
+    const p = new RegExp(`\\b${word}\\b`, "gi");
+    result = result.replace(p, val.toString());
+  }
+
+  return result;
+}
+
+window.convertSpokenNumbersToDigits = convertSpokenNumbersToDigits;
 
 function downsampleTo16kPCM(inputData, inputSampleRate) {
   if (inputSampleRate === 16000) {

@@ -430,8 +430,31 @@ class MemoirApp {
   }
 
   async handleVoiceCreateChapter(title) {
-    const rawTitle = title || `Chapter ${this.vaultData.stats.chapters + 1 || 1}`;
-    const cleanTitle = rawTitle.toLowerCase().startsWith("chapter") ? rawTitle : `Chapter - ${rawTitle}`;
+    const raw = (title || "").trim();
+    const converted = window.convertSpokenNumbersToDigits ? window.convertSpokenNumbersToDigits(raw).trim() : raw;
+    const defaultNum = this.vaultData?.stats?.chapters + 1 || 1;
+
+    let cleanTitle = "";
+    if (!converted) {
+      cleanTitle = `Chapter ${defaultNum}`;
+    } else if (/^chapter\b/i.test(converted)) {
+      const rest = converted.replace(/^chapter\s*[:-]?\s*/i, "").trim();
+      if (/^\d+\b/.test(rest)) {
+        const match = rest.match(/^(\d+)(?:\s*[:-]?\s*(.*))?$/);
+        const num = match[1];
+        const sub = (match[2] || "").trim();
+        cleanTitle = sub ? `Chapter ${num} - ${sub}` : `Chapter ${num}`;
+      } else {
+        cleanTitle = rest ? `Chapter - ${rest}` : `Chapter ${defaultNum}`;
+      }
+    } else if (/^\d+\b/.test(converted)) {
+      const match = converted.match(/^(\d+)(?:\s*[:-]?\s*(.*))?$/);
+      const num = match[1];
+      const sub = (match[2] || "").trim();
+      cleanTitle = sub ? `Chapter ${num} - ${sub}` : `Chapter ${num}`;
+    } else {
+      cleanTitle = `Chapter - ${converted}`;
+    }
 
     const res = await this.storage.saveNote({
       type: "chapter",
@@ -448,8 +471,31 @@ class MemoirApp {
   }
 
   async handleVoiceCreateTopic(title) {
-    const rawTitle = title || `Topic ${this.vaultData.stats.topics + 1 || 1}`;
-    const cleanTitle = rawTitle.toLowerCase().startsWith("topic") ? rawTitle : `Topic - ${rawTitle}`;
+    const raw = (title || "").trim();
+    const converted = window.convertSpokenNumbersToDigits ? window.convertSpokenNumbersToDigits(raw).trim() : raw;
+    const defaultNum = this.vaultData?.stats?.topics + 1 || 1;
+
+    let cleanTitle = "";
+    if (!converted) {
+      cleanTitle = `Topic ${defaultNum}`;
+    } else if (/^topic\b/i.test(converted)) {
+      const rest = converted.replace(/^topic\s*[:-]?\s*/i, "").trim();
+      if (/^\d+\b/.test(rest)) {
+        const match = rest.match(/^(\d+)(?:\s*[:-]?\s*(.*))?$/);
+        const num = match[1];
+        const sub = (match[2] || "").trim();
+        cleanTitle = sub ? `Topic ${num} - ${sub}` : `Topic ${num}`;
+      } else {
+        cleanTitle = rest ? `Topic - ${rest}` : `Topic ${defaultNum}`;
+      }
+    } else if (/^\d+\b/.test(converted)) {
+      const match = converted.match(/^(\d+)(?:\s*[:-]?\s*(.*))?$/);
+      const num = match[1];
+      const sub = (match[2] || "").trim();
+      cleanTitle = sub ? `Topic ${num} - ${sub}` : `Topic ${num}`;
+    } else {
+      cleanTitle = `Topic - ${converted}`;
+    }
 
     // Link to active chapter context
     let chapterLink = this.activeChapter;
@@ -481,20 +527,29 @@ class MemoirApp {
   }
 
   async handleVoiceCreateThought(textOrTitle) {
+    const raw = (textOrTitle || "").trim();
+    const converted = window.convertSpokenNumbersToDigits ? window.convertSpokenNumbersToDigits(raw).trim() : raw;
     let title = "";
     let body = "";
 
-    if (!textOrTitle) {
-      title = `Thought - ${new Date().toLocaleTimeString()}`;
+    if (!converted) {
+      title = `Thought ${this.vaultData?.stats?.thoughts + 1 || 1}`;
       body = `# ${title}\n\n`;
-    } else if (textOrTitle.length > 50) {
-      // It's a full thought phrase
-      const words = textOrTitle.split(" ");
+    } else if (/^thought\b/i.test(converted)) {
+      const rest = converted.replace(/^thought\s*[:-]?\s*/i, "").trim();
+      if (/^\d+\b/.test(rest)) {
+        title = `Thought ${rest}`;
+      } else {
+        title = rest ? `Thought - ${rest}` : `Thought ${this.vaultData?.stats?.thoughts + 1 || 1}`;
+      }
+      body = `# ${title}\n\n`;
+    } else if (converted.length > 50) {
+      const words = converted.split(" ");
       title = `Thought - ${words.slice(0, 5).join(" ")}...`;
-      body = `# ${title}\n\n${textOrTitle}\n\n`;
+      body = `# ${title}\n\n${converted}\n\n`;
     } else {
-      title = textOrTitle.toLowerCase().startsWith("thought") ? textOrTitle : `Thought - ${textOrTitle}`;
-      body = `# ${title}\n\n`;
+      title = `Thought - ${converted}`;
+      body = `# ${title}\n\n${converted}\n\n`;
     }
 
     // Link to active topic / chapter
@@ -599,9 +654,10 @@ class MemoirApp {
 
     const notes = this.vaultData.notes || [];
 
-    const chapters = notes.filter((n) => n.type === "chapter");
-    const topics = notes.filter((n) => n.type === "topic");
-    const thoughts = notes.filter((n) => n.type === "thought");
+    const naturalSort = (a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
+    const chapters = notes.filter((n) => n.type === "chapter").sort(naturalSort);
+    const topics = notes.filter((n) => n.type === "topic").sort(naturalSort);
+    const thoughts = notes.filter((n) => n.type === "thought").sort(naturalSort);
 
     if (chaptersBadge) chaptersBadge.textContent = chapters.length;
     if (topicsBadge) topicsBadge.textContent = topics.length;

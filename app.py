@@ -448,6 +448,12 @@ class MemoirHandler(BaseHTTPRequestHandler):
                 except Exception as e:
                     print(f"Error reading {filepath}: {e}")
 
+        # Sort notes using natural alphanumeric sorting
+        def natural_sort_key(s):
+            return [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', str(s))]
+
+        notes.sort(key=lambda n: natural_sort_key(n.get("title", "")))
+
         # Compute backlinks & graph edges
         edges = []
         edge_set = set()
