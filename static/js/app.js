@@ -159,6 +159,12 @@ class MemoirApp {
           ? `Buffer: "${this.transcriptionBuffer.slice(0, 35)}..."`
           : 'Say "Chapter", "Topic", or "Thought" to dictate...';
       }
+
+      if (!isListening) {
+        setTimeout(() => {
+          this.processBufferIntentOnMicStop();
+        }, 120);
+      }
     };
 
     this.voice.onTranscription = (text, isFinal) => {
@@ -225,6 +231,26 @@ class MemoirApp {
     // Save to Note Button
     document.getElementById("btn-save-transcript-note")?.addEventListener("click", () => {
       this.saveTranscriptionToNote();
+    });
+
+    // Append to Chapter Button
+    document.getElementById("btn-append-transcript-chapter")?.addEventListener("click", () => {
+      const text = this.getBufferText();
+      if (!text) {
+        this.showToast("Transcription buffer is empty", "info");
+        return;
+      }
+      this.handleVoiceAppend("chapter", text);
+    });
+
+    // Append to Topic Button
+    document.getElementById("btn-append-transcript-topic")?.addEventListener("click", () => {
+      const text = this.getBufferText();
+      if (!text) {
+        this.showToast("Transcription buffer is empty", "info");
+        return;
+      }
+      this.handleVoiceAppend("topic", text);
     });
 
     // Save as Thought Button
@@ -314,6 +340,73 @@ class MemoirApp {
     };
   }
 
+  processBufferIntentOnMicStop() {
+    const bufferText = this.getBufferText();
+    if (!bufferText) return;
+
+    // Check for "append to chapter ..."
+    const appendChapMatch = bufferText.match(/^(?:please\s+)?(?:append|add)(?:\s+this)?(?:\s+to)?(?:\s+(?:the|my))?\s+chapter(?:\s*[:-]?\s*(.*))?$/is);
+    if (appendChapMatch) {
+      this.handleVoiceAppend("chapter", appendChapMatch[1] || "");
+      return;
+    }
+
+    // Check for "append to topic ..."
+    const appendTopicMatch = bufferText.match(/^(?:please\s+)?(?:append|add)(?:\s+this)?(?:\s+to)?(?:\s+(?:the|my))?\s+topic(?:\s*[:-]?\s*(.*))?$/is);
+    if (appendTopicMatch) {
+      this.handleVoiceAppend("topic", appendTopicMatch[1] || "");
+      return;
+    }
+
+    // Check for "append to thought ..."
+    const appendThoughtMatch = bufferText.match(/^(?:please\s+)?(?:append|add)(?:\s+this)?(?:\s+to)?(?:\s+(?:the|my))?\s+thought(?:\s*[:-]?\s*(.*))?$/is);
+    if (appendThoughtMatch) {
+      this.handleVoiceAppend("thought", appendThoughtMatch[1] || "");
+      return;
+    }
+
+    // Check for "append to note ..."
+    const appendNoteMatch = bufferText.match(/^(?:please\s+)?(?:append|add)(?:\s+this)?(?:\s+to)?(?:\s+(?:the|my|active|current))?\s+note(?:\s*[:-]?\s*(.*))?$/is);
+    if (appendNoteMatch) {
+      this.handleVoiceAppend("active", appendNoteMatch[1] || "");
+      return;
+    }
+
+    // Check for "chapter ..."
+    const chapMatch = bufferText.match(/^(?:create\s+)?(?:new\s+)?chapter(?:\s*[:-]?\s*(.*))?$/is);
+    if (chapMatch) {
+      this.handleVoiceCreateChapter(chapMatch[1] || "");
+      this.clearBuffer();
+      return;
+    }
+
+    // Check for "topic ..."
+    const topMatch = bufferText.match(/^(?:create\s+)?(?:new\s+)?topic(?:\s*[:-]?\s*(.*))?$/is);
+    if (topMatch) {
+      this.handleVoiceCreateTopic(topMatch[1] || "");
+      this.clearBuffer();
+      return;
+    }
+
+    // Check for "thought ..."
+    const thMatch = bufferText.match(/^(?:create\s+)?(?:new\s+)?thought(?:\s*[:-]?\s*(.*))?$/is);
+    if (thMatch) {
+      this.handleVoiceCreateThought(thMatch[1] || "");
+      this.clearBuffer();
+      return;
+    }
+
+    // Check for save/discard
+    if (/^(?:save|save transcription|save to note|accept|insert|confirm)$/i.test(bufferText.trim())) {
+      this.saveTranscriptionToNote();
+      return;
+    }
+    if (/^(?:discard|discard transcription|cancel|clear)$/i.test(bufferText.trim())) {
+      this.discardTranscription();
+      return;
+    }
+  }
+
   getBufferText() {
     const bufferInput = document.getElementById("transcription-buffer-input");
     return bufferInput ? bufferInput.value.trim() : (this.transcriptionBuffer || "").trim();
@@ -346,11 +439,18 @@ class MemoirApp {
     }
 
     if (this.activeNote) {
-      this.editor.appendSpeechText(text);
+      this.editor.appendSpeechText(text, true);
+      this.editor.saveCurrentNote();
       this.showToast(`Saved to ${this.activeNote.title}`, "info");
       this.clearBuffer();
     } else {
-      this.showToast("No active note open. Create a Chapter or Thought first.", "info");
+      // If no active note is open, append to active chapter or create a new Thought
+      if (this.activeChapter) {
+        this.handleVoiceAppend("chapter", text);
+      } else {
+        this.handleVoiceCreateThought(text);
+        this.clearBuffer();
+      }
     }
   }
 
@@ -365,44 +465,104 @@ class MemoirApp {
   }
 
   async handleVoiceAppend(targetType, payload) {
-    const textToAppend = (payload || this.getBufferText() || "").trim();
-    if (!textToAppend) {
+    const rawText = (payload || this.getBufferText() || "").trim();
+    if (!rawText) {
       this.showToast(`No content specified to append to ${targetType}. Speak your text first.`, "info");
       return;
     }
 
-    // 1. Locate the target note
-    let targetNote = null;
+    const converted = window.convertSpokenNumbersToDigits ? window.convertSpokenNumbersToDigits(rawText).trim() : rawText;
+    const notes = this.vaultData?.notes || [];
 
+    let targetNote = null;
+    let textToAppend = converted;
+
+    // 1. Try to extract specific chapter/topic number or title from converted string
+    // e.g. "1 then a bunch of text..." or "1: a bunch of text" or "The Quantum Mind: a bunch of text"
     if (targetType === "chapter") {
-      if (this.activeNote && this.activeNote.type === "chapter") {
-        targetNote = this.activeNote;
-      } else if (this.activeChapter) {
-        targetNote = this.vaultData?.notes?.find((n) => n.type === "chapter" && (n.title.toLowerCase() === this.activeChapter.toLowerCase() || n.id.toLowerCase() === this.activeChapter.toLowerCase()));
-      }
-      if (!targetNote && this.vaultData?.notes) {
-        targetNote = this.vaultData.notes.filter((n) => n.type === "chapter")[0];
+      const numMatch = converted.match(/^(\d+)(?:\s*[:-]?\s*|\s+(?:then|that|where|is|and)\s+|\s+)(.*)$/is);
+      if (numMatch) {
+        const num = numMatch[1];
+        textToAppend = (numMatch[2] || "").trim();
+        targetNote = notes.find(
+          (n) => n.type === "chapter" && (
+            n.title.toLowerCase() === `chapter ${num}`.toLowerCase() ||
+            n.title.toLowerCase() === `chapter - ${num}`.toLowerCase() ||
+            n.title.toLowerCase().startsWith(`chapter ${num} `) ||
+            n.title.toLowerCase().startsWith(`chapter ${num} -`) ||
+            n.title.toLowerCase().startsWith(`chapter - ${num} `) ||
+            n.id.toLowerCase() === `chapter ${num}`.toLowerCase() ||
+            n.filename.toLowerCase() === `chapter ${num}.md`.toLowerCase() ||
+            n.filename.toLowerCase() === `chapter - ${num}.md`.toLowerCase()
+          )
+        );
+      } else if (converted.match(/^(\d+)$/)) {
+        // Just the number was spoken (e.g. user had text in buffer and said "append to chapter 1")
+        const num = converted.match(/^(\d+)$/)[1];
+        textToAppend = this.getBufferText() !== converted ? this.getBufferText() : "";
+        targetNote = notes.find((n) => n.type === "chapter" && (n.title.toLowerCase() === `chapter ${num}`.toLowerCase() || n.title.toLowerCase() === `chapter - ${num}`.toLowerCase()));
       }
     } else if (targetType === "topic") {
-      if (this.activeNote && this.activeNote.type === "topic") {
-        targetNote = this.activeNote;
-      } else if (this.activeTopic) {
-        targetNote = this.vaultData?.notes?.find((n) => n.type === "topic" && (n.title.toLowerCase() === this.activeTopic.toLowerCase() || n.id.toLowerCase() === this.activeTopic.toLowerCase()));
-      }
-      if (!targetNote && this.vaultData?.notes) {
-        targetNote = this.vaultData.notes.filter((n) => n.type === "topic")[0];
+      const numMatch = converted.match(/^(\d+)(?:\s*[:-]?\s*|\s+(?:then|that|where|is|and)\s+|\s+)(.*)$/is);
+      if (numMatch) {
+        const num = numMatch[1];
+        textToAppend = (numMatch[2] || "").trim();
+        targetNote = notes.find((n) => n.type === "topic" && (n.title.toLowerCase() === `topic ${num}`.toLowerCase() || n.title.toLowerCase() === `topic - ${num}`.toLowerCase()));
       }
     } else if (targetType === "thought") {
-      if (this.activeNote && this.activeNote.type === "thought") {
-        targetNote = this.activeNote;
-      } else if (this.vaultData?.notes) {
-        targetNote = this.vaultData.notes.filter((n) => n.type === "thought")[0];
+      const numMatch = converted.match(/^(\d+)(?:\s*[:-]?\s*|\s+(?:then|that|where|is|and)\s+|\s+)(.*)$/is);
+      if (numMatch) {
+        const num = numMatch[1];
+        textToAppend = (numMatch[2] || "").trim();
+        targetNote = notes.find((n) => n.type === "thought" && (n.title.toLowerCase() === `thought ${num}`.toLowerCase() || n.title.toLowerCase() === `thought - ${num}`.toLowerCase()));
       }
-    } else {
-      targetNote = this.activeNote;
     }
 
-    // If no note exists yet for this category, auto-create one with the text!
+    // 2. If targetNote was not resolved by number, fallback to active or latest note of that category
+    if (!targetNote) {
+      if (targetType === "chapter") {
+        if (this.activeNote && this.activeNote.type === "chapter") {
+          targetNote = this.activeNote;
+        } else if (this.activeChapter) {
+          targetNote = notes.find((n) => n.type === "chapter" && (n.title.toLowerCase() === this.activeChapter.toLowerCase() || n.id.toLowerCase() === this.activeChapter.toLowerCase()));
+        }
+        if (!targetNote) {
+          targetNote = notes.filter((n) => n.type === "chapter")[0];
+        }
+      } else if (targetType === "topic") {
+        if (this.activeNote && this.activeNote.type === "topic") {
+          targetNote = this.activeNote;
+        } else if (this.activeTopic) {
+          targetNote = notes.find((n) => n.type === "topic" && (n.title.toLowerCase() === this.activeTopic.toLowerCase() || n.id.toLowerCase() === this.activeTopic.toLowerCase()));
+        }
+        if (!targetNote) {
+          targetNote = notes.filter((n) => n.type === "topic")[0];
+        }
+      } else if (targetType === "thought") {
+        if (this.activeNote && this.activeNote.type === "thought") {
+          targetNote = this.activeNote;
+        } else {
+          targetNote = notes.filter((n) => n.type === "thought")[0];
+        }
+      } else {
+        targetNote = this.activeNote;
+      }
+    }
+
+    // If textToAppend is empty, use the full transcription buffer
+    if (!textToAppend) {
+      textToAppend = this.getBufferText();
+    }
+
+    // Clean up any remaining leading "then ", "that ", "is "
+    textToAppend = textToAppend.replace(/^(?:then|that|is)\s+/i, "").trim();
+
+    if (!textToAppend) {
+      this.showToast(`No content found to append to ${targetType}.`, "info");
+      return;
+    }
+
+    // 3. If no note exists yet for this category, auto-create one!
     if (!targetNote) {
       if (targetType === "chapter") {
         await this.handleVoiceCreateChapter(textToAppend);
@@ -410,23 +570,21 @@ class MemoirApp {
         await this.handleVoiceCreateTopic(textToAppend);
       } else if (targetType === "thought") {
         await this.handleVoiceCreateThought(textToAppend);
-      } else {
-        this.showToast("No active note open. Create a Chapter or Thought first.", "info");
       }
       this.clearBuffer();
       return;
     }
 
-    // 2. Open note in editor if not already active
+    // 4. Open note in editor if not already active
     if (!this.activeNote || this.activeNote.id !== targetNote.id) {
       await this.openNote(targetNote);
     }
 
-    // 3. Append text to editor as a clean paragraph and auto-save
+    // 5. Append text to editor as a clean paragraph and auto-save
     this.editor.appendSpeechText(textToAppend, true);
     await this.editor.saveCurrentNote();
     this.clearBuffer();
-    this.showToast(`📥 Appended to ${targetNote.type.toUpperCase()}: "${targetNote.title}"`, targetNote.type);
+    this.showToast(`📥 Appended to ${targetNote.title}`, targetNote.type);
   }
 
   async handleVoiceCreateChapter(title) {
