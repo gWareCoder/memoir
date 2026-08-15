@@ -661,47 +661,29 @@ class MemoirApp {
 
   switchView(viewName) {
     this.currentView = viewName;
-    const graphPanel = document.getElementById("graph-view-panel");
-    const editorPanel = document.getElementById("editor-view-panel");
     const splitContainer = document.getElementById("split-view-container");
-
     const tabGraph = document.getElementById("tab-btn-graph");
     const tabEditor = document.getElementById("tab-btn-editor");
     const tabSplit = document.getElementById("tab-btn-split");
 
     [tabGraph, tabEditor, tabSplit].forEach((btn) => btn && btn.classList.remove("active"));
 
-    if (graphPanel) graphPanel.classList.remove("active");
-    if (editorPanel) editorPanel.classList.remove("active");
-    if (splitContainer) splitContainer.classList.remove("active");
-
-    const graphContainer = document.getElementById("graph-wrapper");
-    const editorWrapper = document.getElementById("note-editor-wrapper");
-
-    if (viewName === "graph") {
-      if (tabGraph) tabGraph.classList.add("active");
-      if (graphPanel) {
-        graphPanel.classList.add("active");
-        if (graphContainer) graphPanel.appendChild(graphContainer);
-      }
-      setTimeout(() => this.graph && this.graph.resize(), 50);
-    } else if (viewName === "editor") {
-      if (tabEditor) tabEditor.classList.add("active");
-      if (editorPanel) {
-        editorPanel.classList.add("active");
-        if (editorWrapper) editorPanel.appendChild(editorWrapper);
-      }
-    } else if (viewName === "split") {
-      if (tabSplit) tabSplit.classList.add("active");
-      if (splitContainer) {
-        splitContainer.classList.add("active");
-        const left = document.getElementById("split-left-pane");
-        const right = document.getElementById("split-right-pane");
-        if (left && editorWrapper) left.appendChild(editorWrapper);
-        if (right && graphContainer) right.appendChild(graphContainer);
-      }
-      setTimeout(() => this.graph && this.graph.resize(), 50);
+    if (splitContainer) {
+      splitContainer.classList.remove("mode-graph", "mode-editor", "mode-split");
+      splitContainer.classList.add(`mode-${viewName}`);
     }
+
+    if (viewName === "graph" && tabGraph) {
+      tabGraph.classList.add("active");
+    } else if (viewName === "editor" && tabEditor) {
+      tabEditor.classList.add("active");
+    } else if (viewName === "split" && tabSplit) {
+      tabSplit.classList.add("active");
+    }
+
+    setTimeout(() => {
+      if (this.graph) this.graph.resize();
+    }, 60);
   }
 
   setupUIEvents() {
