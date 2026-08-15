@@ -6,6 +6,16 @@ An Obsidian-like local voice transcription, markdown vault, and connected graph 
 
 import os
 import sys
+
+# Ensure local and system packages (vosk, speech_recognition, tqdm, cffi) are discoverable
+for p in [
+    "/home/tomg/.local/lib/python3.11/site-packages",
+    "/usr/local/lib/python3.11/dist-packages",
+    "/usr/lib/python3/dist-packages",
+]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
 import json
 import re
 import io
