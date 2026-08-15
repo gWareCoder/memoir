@@ -9,75 +9,125 @@
 
 ---
 
-## 🌟 Core Architecture & Topology
+## 📸 Interface Preview
 
+![Memoir Interface Screenshot](assets/screenshot.png)
+
+---
+
+## 🏗️ System Architecture
+
+Memoir operates entirely on your local machine with zero external cloud dependencies. Below is the end-to-end data flow and structural topology:
+
+### 1. Voice Processing & Intent Recognition Pipeline
+
+```mermaid
+flowchart TD
+    A[🎙️ User Speech Input] --> B[Web Audio API Analyser]
+    B -->|Real-time Frequency Data| C[Waveform Canvas Visualizer]
+    A --> D[Web Speech Recognition Engine]
+    D -->|Continuous Stream| E[Natural Language Intent Parser]
+    
+    E -->|'Chapter [Title]'| F[📖 Chapter Engine]
+    E -->|'Topic [Title]'| G[🌿 Topic Engine]
+    E -->|'Thought [Text]'| H[💡 Thought Engine]
+    E -->|'Link to [Note]'| I[🔗 Wikilink Injector]
+    E -->|'Tag [Keyword]'| J[🏷️ Tag Injector]
+    E -->|Regular Dictation| K[📝 Active Note Stream]
+    
+    F -->|Write .md| L[(Vault File System)]
+    G -->|Link [[Chapter]] & Write .md| L
+    H -->|Link [[Topic]] & Discover Related| L
+    I -->|Insert [[Note]]| L
+    J -->|Insert #tag| L
+    K -->|Append text| L
 ```
-                  ┌───────────────────────────────┐
-                  │ 🎙️ Continuous Voice Capture   │
-                  │ (Live STT + Web Audio Canvas) │
-                  └───────────────┬───────────────┘
-                                  │
-                  ┌───────────────▼───────────────┐
-                  │   Natural Language Parser     │
-                  │   ("chapter", "topic", etc.)  │
-                  └───────────────┬───────────────┘
-                                  │
-         ┌────────────────────────┼────────────────────────┐
-         │                        │                        │
-         ▼                        ▼                        ▼
-┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│  🟣 CHAPTER      │    │  🟢 TOPIC        │    │  🟠 THOUGHT      │
-│  "Chapter 1..."  ├────►  "Topic A..."    ├────►  "Thought X..."  │
-│  Top-level Note  │    │  [[Chapter Link]]│    │  [[Topic Link]]  │
-└──────────────────┘    └──────────────────┘    └────────┬─────────┘
-                                                         │
-                                               Auto-Discovered Links
-                                                         ▼
-                                                [[Related Thought Y]]
+
+---
+
+### 2. Knowledge Graph Topology & Relational Hierarchy
+
+```mermaid
+graph TD
+    subgraph Chapters ["🟣 Chapter Layer (Top-Level)"]
+        C1["📖 Chapter 1: The Architecture of Mind"]
+        C2["📖 Chapter 2: Neural Synchrony"]
+    end
+
+    subgraph Topics ["🟢 Topic Layer (Structural Context)"]
+        T1["🌿 Topic: Spatial Cognition & Graph Thinking"]
+        T2["🌿 Topic: Stream of Consciousness"]
+        T3["🌿 Topic: Gamma Waves & Binding"]
+    end
+
+    subgraph Thoughts ["🟠 Thought Layer (Atomic Insights)"]
+        TH1["💡 Associative Memory & Resonance"]
+        TH2["💡 Bi-directional Wikilinks"]
+        TH3["💡 Zero Latency Voice Dictation"]
+        TH4["💡 40Hz Resonance in Memory"]
+    end
+
+    C1 -->|Contains| T1
+    C1 -->|Contains| T2
+    C2 -->|Contains| T3
+
+    T1 -->|Context for| TH1
+    T1 -->|Context for| TH2
+    T2 -->|Context for| TH3
+    T3 -->|Context for| TH4
+
+    TH1 -.->|Auto-Related Similarity| TH2
+    TH1 -.->|Cross-Link| TH4
+    TH3 -.->|Related| TH1
+
+    classDef chapterStyle fill:#8b5cf6,stroke:#a855f7,stroke-width:2px,color:#fff;
+    classDef topicStyle fill:#059669,stroke:#10b981,stroke-width:2px,color:#fff;
+    classDef thoughtStyle fill:#d97706,stroke:#f59e0b,stroke-width:2px,color:#fff;
+
+    class C1,C2 chapterStyle;
+    class T1,T2,T3 topicStyle;
+    class TH1,TH2,TH3,TH4 thoughtStyle;
 ```
+
+---
+
+### 3. Application Stack & Component Breakdown
+
+| Layer | Component | Implementation |
+| :--- | :--- | :--- |
+| **Frontend UI** | Obsidian-Style Layout | Semantic HTML5, Glassmorphism, CSS Custom Properties |
+| **Voice Engine** | Speech-to-Text & Audio | Web Speech API, Web Audio API Analyzer, Synthesizer Chimes |
+| **Graph Simulation** | Interactive Knowledge Graph | 2D HTML5 Canvas, 60fps N-Body Repulsion, Hooke Spring Physics |
+| **Editor & Live Preview** | Markdown & Backlinks | Regex Parser, Wikilink Autocomplete `[[]]`, Frontmatter YAML |
+| **Similarity Engine** | Related Thoughts Discovery | Jaccard Token Resonance & Tag Overlap Heuristics |
+| **Backend & Storage** | Local REST API & Vault | Python 3 Standard Library HTTP Server, Pure Markdown (`.md`) |
 
 ---
 
 ## ✨ Key Features
 
-### 1. 🎙️ Continuous Local Voice Transcription
-- Real-time speech recognition with zero cloud dependency.
-- Live audio waveform visualizer and speech confidence indicators.
-- Hands-free dictation that streams transcribed sentences directly into the active note.
-- Subtle Web Audio harmonic synthesizer chimes on command recognition.
-
-### 2. 🗣️ Smart Voice Triggers & Intent Parsing
-- 📖 **"Chapter [Title]"** or **"New Chapter [Title]"**: Starts a new top-level Chapter markdown note (`.md`) and establishes active chapter context.
-- 🌿 **"Topic [Title]"** or **"New Topic [Title]"**: Creates a Topic note automatically linked to the active Chapter with `[[Chapter Name]]`.
-- 💡 **"Thought [Text/Idea]"** or **"New Thought [Text]"**: Creates an atomic Thought note linked to the active Topic & Chapter, and scans the vault to find and link related thoughts.
-- 🔗 **"Link to [Note Name]"**: Dynamically inserts a bi-directional `[[Note Name]]` wikilink.
-- 🏷️ **"Tag [Keyword]"**: Adds a `#keyword` tag to the document.
-- ⏸️ **"Pause recording" / "Stop transcription"**: Toggles off listening hands-free.
-
-### 3. 🌐 Obsidian-Grade Interactive Knowledge Graph
-- 60 FPS 2D Canvas force-directed physics simulation with particle repulsion, link tension, and gravitational centering.
-- Color-coded glowing halos:
-  - 🟣 **Chapters** (Violet / Amethyst nodes)
-  - 🟢 **Topics** (Emerald / Teal nodes)
-  - 🟠 **Thoughts** (Amber / Coral nodes)
-- Dynamic hover preview cards showing note summary, word count, and connection counts.
-- Interactive zoom, pan, drag-to-pin, search filtering, and node click-to-edit.
-- Right-sidebar **Local Graph Mini-Map** showing the 1-hop neighborhood of the active note.
-
-### 4. 📝 Bi-directional Markdown Editor & Live Preview
-- Real-time preview with syntax highlighting, blockquotes, code blocks, lists, and tags.
-- Full Obsidian-compatible `[[wikilinks]]` with click-to-navigate and autocomplete popup when typing `[[`.
-- Live word count and estimated reading time.
-- Automatic note renaming with global wikilink refactoring across all notes.
-
-### 5. ⚡ Semantic Related Thoughts Engine
-- Algorithmic keyword and concept similarity analysis that detects serendipitous connections between thoughts across your vault.
-- 1-click **"+ Link in Note"** suggestions in the inspector sidebar.
-
-### 6. 📁 100% Local & Obsidian Compatible
-- Notes are stored directly as standard `.md` Markdown files in `~/memoir/vault/`.
-- You can open the `vault/` folder directly in Obsidian, Logseq, or Foam.
-- 1-click **Export Vault as .zip** backup.
+- **🎙️ Continuous Local Voice Dictation**: Hands-free voice transcription with live audio waveform bars.
+- **🗣️ Natural Voice Commands**:
+  - Say **"Chapter [Title]"** to start a new Chapter document.
+  - Say **"Topic [Title]"** to create a Topic linked to the active Chapter.
+  - Say **"Thought [Text]"** to create an atomic Thought note linked to topics and related thoughts.
+  - Say **"Link to [Note]"** to insert `[[Note Name]]` wikilinks.
+  - Say **"Tag [Keyword]"** to add `#keyword` tags.
+- **🌐 Obsidian-Grade Interactive Knowledge Graph**:
+  - Color-coded glowing halos (🟣 Chapters, 🟢 Topics, 🟠 Thoughts).
+  - Hover tooltip cards showing word count, connection statistics, and note excerpts.
+  - Drag, zoom, pan, search filtering, and node click-to-edit.
+- **📝 Markdown Editor & Live Preview**:
+  - Split view with live syntax styling, checklists, and code formatting.
+  - Interactive `[[wikilinks]]` with auto-complete dropdown when typing `[[`.
+  - Automatic note title renaming with global wikilink refactoring.
+- **🔍 Semantic Related Thoughts Inspector**:
+  - Discovers unexpected connections between thoughts across the vault.
+  - 1-click **"+ Link in Note"** button.
+- **📁 100% Local & Obsidian-Compatible**:
+  - All notes are saved directly as `.md` files in `~/memoir/vault/`.
+  - Open `vault/` directly in Obsidian, Logseq, or Foam.
+  - 1-click **Export Vault as .zip**.
 
 ---
 
@@ -89,7 +139,7 @@ Run the launcher script:
 /home/tomg/memoir/run.sh
 ```
 
-Or start the Python backend server directly:
+Or start the server directly:
 ```bash
 python3 /home/tomg/memoir/app.py
 ```
@@ -136,6 +186,8 @@ memoir/
 ├── app.py                 # Python backend REST server & vault manager
 ├── run.sh                 # 1-click startup script
 ├── memoir.desktop         # Linux desktop entry
+├── assets/                # Screenshot and UI assets
+│   └── screenshot.png     # Application screenshot
 ├── static/                # Obsidian-style web app (HTML, CSS, JS)
 │   ├── css/
 │   │   ├── style.css      # Core design system & Obsidian dark theme
