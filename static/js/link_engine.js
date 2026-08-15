@@ -160,11 +160,20 @@ class LinkEngine {
 
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
 
     const w = rect.width;
     const h = rect.height;
     ctx.clearRect(0, 0, w, h);
+
+    if (!this.activeNote || !this.vaultData) {
+      ctx.font = "11px Inter, sans-serif";
+      ctx.fillStyle = "#64698b";
+      ctx.textAlign = "center";
+      ctx.fillText("Select a note to view local graph", w / 2, h / 2);
+      return;
+    }
 
     const activeId = this.activeNote.id;
     const edges = this.vaultData.graph.edges || [];

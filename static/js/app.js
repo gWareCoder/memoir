@@ -686,6 +686,16 @@ class MemoirApp {
     }, 60);
   }
 
+  toggleLeftSidebar() {
+    const sidebar = document.querySelector(".sidebar-left");
+    if (!sidebar) return;
+    const isCollapsed = sidebar.classList.toggle("collapsed");
+    sidebar.classList.toggle("open", !isCollapsed);
+    setTimeout(() => {
+      if (this.graph) this.graph.resize();
+    }, 250);
+  }
+
   toggleRightSidebar() {
     const sidebar = document.getElementById("sidebar-right");
     const toggleBtn = document.getElementById("btn-toggle-inspector");
@@ -705,6 +715,9 @@ class MemoirApp {
   }
 
   setupUIEvents() {
+    // Toggle Left Sidebar
+    document.getElementById("btn-toggle-left-sidebar")?.addEventListener("click", () => this.toggleLeftSidebar());
+
     // Toggle Right Sidebar (Inspector / Local Graph)
     document.getElementById("btn-toggle-inspector")?.addEventListener("click", () => this.toggleRightSidebar());
     document.getElementById("btn-close-inspector")?.addEventListener("click", () => this.toggleRightSidebar());
