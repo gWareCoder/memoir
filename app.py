@@ -293,6 +293,7 @@ Hands-free thought recording removes visual micro-editing hesitation. You voice 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
+    allow_reuse_address = True
 
 
 class MemoirHandler(BaseHTTPRequestHandler):
@@ -545,9 +546,65 @@ class MemoirHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         content_length = int(self.headers.get("Content-Length", 0))
-        post_body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
+        post_bytes = self.rfile.read(content_length) if content_length > 0 else b""
+        
+        # Audio Transcription Endpoint
+        if path == "/api/transcribe":
+            try:
+                import base64
+                import subprocess
+                import tempfile
+                import speech_recognition as sr
+
+                audio_data = b""
+                try:
+                    data = json.loads(post_bytes.decode("utf-8"))
+                    if "audio" in data:
+                        raw_b64 = data["audio"]
+                        if "," in raw_b64:
+                            raw_b64 = raw_b64.split(",", 1)[1]
+                        audio_data = base64.b64decode(raw_b64)
+                except Exception:
+                    audio_data = post_bytes
+
+                if not audio_data:
+                    self.send_error_json("No audio payload received")
+                    return
+
+                with tempfile.NamedTemporaryFile(suffix=".input", delete=False) as in_f:
+                    in_f.write(audio_data)
+                    in_path = in_f.name
+
+                out_path = in_path + ".wav"
+                try:
+                    cmd = ["/usr/bin/ffmpeg", "-y", "-i", in_path, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", out_path]
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+                    r = sr.Recognizer()
+                    with sr.AudioFile(out_path) as source:
+                        recorded = r.record(source)
+                        try:
+                            text = r.recognize_google(recorded)
+                            self.send_json({"success": True, "text": text})
+                            return
+                        except sr.UnknownValueError:
+                            self.send_json({"success": True, "text": "", "message": "No speech detected in audio"})
+                            return
+                        except Exception as err:
+                            self.send_json({"success": False, "error": str(err)})
+                            return
+                finally:
+                    for p in [in_path, out_path]:
+                        if os.path.exists(p):
+                            try: os.unlink(p)
+                            except Exception: pass
+
+            except Exception as e:
+                self.send_json({"success": False, "error": str(e)}, status=500)
+                return
+
         try:
-            data = json.loads(post_body)
+            data = json.loads(post_bytes.decode("utf-8"))
         except Exception:
             data = {}
 

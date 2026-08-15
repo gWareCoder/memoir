@@ -70,6 +70,10 @@ class VoiceEngine {
       if (event.error === "not-allowed") {
         this.isListening = false;
         if (this.onStatusChange) this.onStatusChange(false);
+        if (window.app) window.app.showToast("Microphone permission denied. Please allow mic in your browser.", "info");
+      } else if (event.error === "network" || event.error === "service-not-allowed") {
+        console.info("WebSpeech API network/service limitation detected on this browser. Activating Server STT Audio Fallback.");
+        this.startMediaRecorderFallback();
       }
     };
 
@@ -94,6 +98,45 @@ class VoiceEngine {
         this.processFinalSpeech(finalTranscript.trim());
       }
     };
+  }
+
+  startMediaRecorderFallback() {
+    if (!this.microphoneStream || this.mediaRecorder) return;
+    try {
+      this.audioChunks = [];
+      const options = MediaRecorder.isTypeSupported("audio/webm") ? { mimeType: "audio/webm" } : {};
+      this.mediaRecorder = new MediaRecorder(this.microphoneStream, options);
+
+      this.mediaRecorder.ondataavailable = async (e) => {
+        if (e.data && e.data.size > 1000 && this.isListening) {
+          await this.sendAudioChunkToBackend(e.data);
+        }
+      };
+
+      // Record in 3.5s slices for continuous transcription
+      this.mediaRecorder.start(3500);
+      console.log("MediaRecorder local server transcription fallback started.");
+    } catch (e) {
+      console.warn("MediaRecorder fallback error:", e);
+    }
+  }
+
+  async sendAudioChunkToBackend(blob) {
+    try {
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": blob.type || "audio/webm" },
+        body: blob,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.text && data.text.trim()) {
+          this.processFinalSpeech(data.text.trim());
+        }
+      }
+    } catch (err) {
+      console.warn("Audio chunk transcription error:", err);
+    }
   }
 
   async startAudioVisualizer(canvasElement) {

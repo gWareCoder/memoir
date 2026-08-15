@@ -96,6 +96,7 @@ class MemoirApp {
     const waveformCanvas = document.getElementById("waveform-canvas");
     const reviewDock = document.getElementById("transcription-review-dock");
     const bufferInput = document.getElementById("transcription-buffer-input");
+    const liveInterimText = document.getElementById("live-interim-text");
     const wordBadge = document.getElementById("review-word-badge");
     const reviewModeToggle = document.getElementById("review-mode-toggle");
     const liveCue = document.getElementById("voice-live-cue");
@@ -131,6 +132,15 @@ class MemoirApp {
       if (voiceStatusText) {
         voiceStatusText.textContent = isListening ? "Listening..." : "Mic Idle";
       }
+      if (liveInterimText) {
+        if (isListening) {
+          liveInterimText.textContent = "Listening... Speak now";
+          liveInterimText.classList.add("active");
+        } else {
+          liveInterimText.textContent = "Click mic or press Ctrl+M to speak";
+          liveInterimText.classList.remove("active");
+        }
+      }
       if (transcriptPreview && !isListening) {
         transcriptPreview.textContent = this.transcriptionBuffer
           ? `Buffer: "${this.transcriptionBuffer.slice(0, 35)}..."`
@@ -141,6 +151,10 @@ class MemoirApp {
     this.voice.onTranscription = (text, isFinal) => {
       if (transcriptPreview) {
         transcriptPreview.textContent = text;
+      }
+      if (liveInterimText) {
+        liveInterimText.textContent = text;
+        liveInterimText.classList.toggle("active", !isFinal);
       }
       if (liveCue) {
         liveCue.style.display = "none";
@@ -170,9 +184,9 @@ class MemoirApp {
           this.updateBufferStats();
         }
       } else {
-        // Interim live text preview in review dock if empty or typing
+        // Show interim live words directly in the review dock
         if (bufferInput && !this.transcriptionBuffer) {
-          bufferInput.placeholder = text + "...";
+          bufferInput.value = text;
         }
       }
     };
@@ -788,6 +802,35 @@ class MemoirApp {
         this.voice.soundEffects = e.target.checked;
       });
     }
+
+    // Diagnostics buttons
+    const diagMicStatus = document.getElementById("diag-mic-status");
+    document.getElementById("btn-test-mic")?.addEventListener("click", async () => {
+      try {
+        if (diagMicStatus) diagMicStatus.textContent = "Testing mic...";
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (diagMicStatus) diagMicStatus.textContent = "Mic connected & working! ✓";
+        this.showToast("Microphone is active & receiving audio", "info");
+      } catch (err) {
+        if (diagMicStatus) diagMicStatus.textContent = "Mic access blocked ✕";
+        this.showToast("Microphone access failed: " + err.message, "info");
+      }
+    });
+
+    document.getElementById("btn-test-server-stt")?.addEventListener("click", async () => {
+      try {
+        if (diagMicStatus) diagMicStatus.textContent = "Testing STT...";
+        const status = await this.storage.getStatus();
+        if (status.status === "online") {
+          if (diagMicStatus) diagMicStatus.textContent = "STT Server Online ✓";
+          this.showToast("Local STT server is online & ready", "info");
+        } else {
+          if (diagMicStatus) diagMicStatus.textContent = "Offline Mode";
+        }
+      } catch (e) {
+        if (diagMicStatus) diagMicStatus.textContent = "Error testing STT";
+      }
+    });
   }
 
   setupKeyboardShortcuts() {

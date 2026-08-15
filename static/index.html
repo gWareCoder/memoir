@@ -295,9 +295,15 @@
         </div>
       </div>
 
+      <!-- Real-time live speech streamer (shows in-flight spoken words with animated cursor) -->
+      <div class="live-speaking-stream" id="live-speaking-stream">
+        <span class="speaking-label">🎙️ Live Speech:</span>
+        <span class="live-interim-text" id="live-interim-text">Click mic or press Ctrl+M and start speaking...</span>
+      </div>
+
       <!-- Editable transcription review box -->
       <div class="review-input-wrapper">
-        <textarea id="transcription-buffer-input" class="transcription-buffer-input" rows="2" placeholder="Spoken words will appear here. Edit or click Save / Discard..."></textarea>
+        <textarea id="transcription-buffer-input" class="transcription-buffer-input" rows="2" placeholder="Spoken words will accumulate here. Edit anytime, then click Save to Note or Discard..."></textarea>
       </div>
 
       <!-- Action Buttons -->
@@ -440,6 +446,20 @@
             <div style="font-size: 12px; color: var(--text-muted);">Play subtle audio synthesizer chimes on voice commands</div>
           </div>
           <input type="checkbox" id="setting-chimes" checked style="width: 18px; height: 18px; accent-color: var(--accent-primary);">
+        </div>
+
+        <div style="margin-bottom: 16px; padding: 12px; background: var(--bg-input); border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+          <div style="font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+            <span>🎙️ Microphone & Speech Diagnostics</span>
+            <span id="diag-mic-status" style="font-size: 11px; color: var(--text-muted);">Ready</span>
+          </div>
+          <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+            Test microphone input and speech recognition engine:
+          </p>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="quick-btn thought" id="btn-test-mic" style="height: 28px; padding: 0 10px;">Test Mic Input</button>
+            <button type="button" class="quick-btn topic" id="btn-test-server-stt" style="height: 28px; padding: 0 10px;">Test Speech Engine</button>
+          </div>
         </div>
 
         <div style="padding: 12px; background: var(--bg-input); border-radius: var(--radius-md); font-size: 12px; color: var(--text-secondary);">
