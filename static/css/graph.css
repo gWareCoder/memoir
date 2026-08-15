@@ -1,0 +1,256 @@
+/* ==========================================================================
+   MEMOIR - Force Graph Styles & Interactive Controls Overlay
+   ========================================================================== */
+
+.graph-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-app);
+  user-select: none;
+}
+
+#graph-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+
+#graph-canvas:active {
+  cursor: grabbing;
+}
+
+/* Floating Control Bar */
+.graph-controls-overlay {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(21, 22, 30, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--shadow-md);
+  z-index: 50;
+  max-width: 320px;
+  transition: all var(--transition-normal);
+}
+
+.graph-controls-overlay.collapsed {
+  padding: 6px;
+}
+
+.graph-controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.graph-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-chip {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all var(--transition-fast);
+}
+
+.filter-chip:hover {
+  border-color: var(--border-bright);
+}
+
+.filter-chip.active.chapter {
+  background: var(--chapter-bg);
+  border-color: var(--chapter-color);
+  color: var(--chapter-color);
+}
+
+.filter-chip.active.topic {
+  background: var(--topic-bg);
+  border-color: var(--topic-color);
+  color: var(--topic-color);
+}
+
+.filter-chip.active.thought {
+  background: var(--thought-bg);
+  border-color: var(--thought-color);
+  color: var(--thought-color);
+}
+
+.filter-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+/* Physics Sliders */
+.physics-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.slider-row label {
+  flex: 1;
+}
+
+.slider-row input[type="range"] {
+  width: 110px;
+  height: 4px;
+  accent-color: var(--accent-primary);
+  background: var(--border-medium);
+  border-radius: 2px;
+  outline: none;
+}
+
+/* Graph Action Buttons */
+.graph-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.graph-btn {
+  flex: 1;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all var(--transition-fast);
+}
+
+.graph-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+  border-color: var(--border-bright);
+}
+
+/* Node Hover Preview Card (Tooltip) */
+#graph-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(28, 30, 40, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  box-shadow: var(--shadow-lg);
+  max-width: 280px;
+  z-index: 100;
+  display: none;
+  transform: translate(12px, 12px);
+  animation: tooltip-fade 0.15s ease-out;
+}
+
+@keyframes tooltip-fade {
+  from { opacity: 0; transform: translate(12px, 18px); }
+  to { opacity: 1; transform: translate(12px, 12px); }
+}
+
+.tooltip-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tooltip-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.tooltip-excerpt {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.tooltip-connections {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wikilink-color);
+}
+
+/* Graph Legend Bottom Left */
+.graph-legend {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  background: rgba(21, 22, 30, 0.75);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  z-index: 40;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
