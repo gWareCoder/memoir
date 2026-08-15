@@ -51,15 +51,17 @@ class MemoirGraph {
   }
 
   resize() {
-    if (!this.canvas) return;
-    const rect = this.canvas.parentElement.getBoundingClientRect();
+    if (!this.canvas || !this.ctx) return;
+    const parent = this.canvas.parentElement;
+    const rect = parent ? parent.getBoundingClientRect() : { width: 800, height: 600 };
     const dpr = window.devicePixelRatio || 1;
-    this.width = rect.width;
-    this.height = rect.height;
+    this.width = Math.max(200, rect.width || 800);
+    this.height = Math.max(200, rect.height || 600);
     this.canvas.width = this.width * dpr;
     this.canvas.height = this.height * dpr;
     this.canvas.style.width = `${this.width}px`;
     this.canvas.style.height = `${this.height}px`;
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.scale(dpr, dpr);
 
     if (this.panX === 0 && this.panY === 0) {

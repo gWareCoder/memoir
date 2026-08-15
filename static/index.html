@@ -451,14 +451,15 @@
         <div style="margin-bottom: 16px; padding: 12px; background: var(--bg-input); border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
           <div style="font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
             <span>🎙️ Microphone & Speech Diagnostics</span>
-            <span id="diag-mic-status" style="font-size: 11px; color: var(--text-muted);">Ready</span>
+            <span id="diag-mic-status" style="font-size: 11px; color: var(--accent-thought); font-weight: 600;">Ready</span>
           </div>
           <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
-            Test microphone input and speech recognition engine:
+            Test microphone hardware, Vosk speech model, or simulate a voice trigger:
           </p>
-          <div style="display: flex; gap: 8px;">
-            <button type="button" class="quick-btn thought" id="btn-test-mic" style="height: 28px; padding: 0 10px;">Test Mic Input</button>
-            <button type="button" class="quick-btn topic" id="btn-test-server-stt" style="height: 28px; padding: 0 10px;">Test Speech Engine</button>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <button type="button" class="quick-btn thought" id="btn-test-mic" style="height: 28px; padding: 0 10px;">🎤 Test Mic Input</button>
+            <button type="button" class="quick-btn topic" id="btn-test-server-stt" style="height: 28px; padding: 0 10px;">⚡ Test STT Engine</button>
+            <button type="button" class="quick-btn chapter" id="btn-simulate-voice" style="height: 28px; padding: 0 10px;">🗣️ Simulate Speech</button>
           </div>
         </div>
 

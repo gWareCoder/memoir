@@ -25,67 +25,80 @@ class MemoirApp {
   }
 
   async init() {
-    // 1. Initialize Submodules
-    this.graph = new MemoirGraph("graph-canvas", "graph-tooltip");
-    this.editor = new MemoirEditor("note-textarea", "note-preview", "note-title-input");
-    this.linkEngine = new LinkEngine();
+    console.log("[Memoir] Initializing application...");
 
-    // 2. Attach Graph Callbacks
-    this.graph.onNodeClick = (node) => {
-      this.openNoteById(node.id);
-      if (this.currentView === "graph") {
-        this.switchView("editor");
+    // 1. Setup UI Event Listeners & Shortcuts first so all buttons are active immediately
+    try {
+      this.setupUIEvents();
+      this.setupKeyboardShortcuts();
+    } catch (e) {
+      console.error("[Memoir] Error during setupUIEvents:", e);
+    }
+
+    // 2. Initialize Submodules
+    try {
+      this.graph = new MemoirGraph("graph-canvas", "graph-tooltip");
+      this.editor = new MemoirEditor("note-textarea", "note-preview", "note-title-input");
+      this.linkEngine = new LinkEngine();
+
+      this.graph.onNodeClick = (node) => {
+        this.openNoteById(node.id);
+        if (this.currentView === "graph") {
+          this.switchView("editor");
+        }
+      };
+
+      this.editor.onNoteSaved = (savedNote) => {
+        this.refreshVaultData(false);
+        this.showToast(`Saved ${savedNote.title}`, "info");
+      };
+
+      this.editor.onWikilinkClicked = (targetTitle) => {
+        this.openNoteById(targetTitle);
+      };
+
+      this.editor.onTitleRenamed = async (oldPath, newTitle) => {
+        const res = await this.storage.renameNote(oldPath, newTitle);
+        if (res && res.success) {
+          this.showToast(`Renamed to "${newTitle}"`, "info");
+          await this.refreshVaultData(true);
+          this.openNoteById(res.newId);
+        }
+      };
+    } catch (e) {
+      console.error("[Memoir] Error initializing submodules:", e);
+    }
+
+    // 3. Attach Voice Engine Callbacks
+    try {
+      if (!this.voice && window.voiceEngine) {
+        this.voice = window.voiceEngine;
       }
-    };
+      this.setupVoiceInteractions();
+    } catch (e) {
+      console.error("[Memoir] Error during setupVoiceInteractions:", e);
+    }
 
-    // 3. Attach Editor Callbacks
-    this.editor.onNoteSaved = (savedNote) => {
-      this.refreshVaultData(false);
-      this.showToast(`Saved ${savedNote.title}`, "info");
-    };
+    // 4. Load Initial Vault Data
+    try {
+      await this.refreshVaultData(true);
 
-    this.editor.onWikilinkClicked = (targetTitle) => {
-      this.openNoteById(targetTitle);
-    };
-
-    this.editor.onTitleRenamed = async (oldPath, newTitle) => {
-      const res = await this.storage.renameNote(oldPath, newTitle);
-      if (res && res.success) {
-        this.showToast(`Renamed to "${newTitle}"`, "info");
-        await this.refreshVaultData(true);
-        this.openNoteById(res.newId);
+      if (this.vaultData.notes && this.vaultData.notes.length > 0) {
+        const chapter = this.vaultData.notes.find((n) => n.type === "chapter") || this.vaultData.notes[0];
+        this.openNote(chapter);
       }
-    };
 
-    // 4. Attach Voice Engine Callbacks
-    this.setupVoiceInteractions();
-
-    // 5. Setup UI Event Listeners
-    this.setupUIEvents();
-    this.setupKeyboardShortcuts();
-
-    // 6. Load Initial Vault Data
-    await this.refreshVaultData(true);
-
-    // Auto select first note or chapter
-    if (this.vaultData.notes && this.vaultData.notes.length > 0) {
-      const chapter = this.vaultData.notes.find((n) => n.type === "chapter") || this.vaultData.notes[0];
-      this.openNote(chapter);
+      const status = await this.storage.getStatus();
+      const statusEl = document.getElementById("server-status-pill");
+      if (statusEl) {
+        statusEl.textContent = status.status === "online" ? "Vault Connected" : "Local Mode";
+      }
+    } catch (e) {
+      console.error("[Memoir] Error loading vault data:", e);
     }
 
-    // Check server status
-    const status = await this.storage.getStatus();
-    const statusEl = document.getElementById("server-status-pill");
-    if (statusEl) {
-      statusEl.textContent = status.status === "online" ? "Vault Connected" : "Local Mode";
-    }
-
-    // Default to Split View if on large screen, otherwise Graph
-    if (window.innerWidth > 1024) {
-      this.switchView("split");
-    } else {
-      this.switchView("graph");
-    }
+    // 5. Default to Split View
+    this.switchView("split");
   }
 
   setupVoiceInteractions() {
@@ -805,31 +818,91 @@ class MemoirApp {
 
     // Diagnostics buttons
     const diagMicStatus = document.getElementById("diag-mic-status");
+
     document.getElementById("btn-test-mic")?.addEventListener("click", async () => {
       try {
-        if (diagMicStatus) diagMicStatus.textContent = "Testing mic...";
+        if (diagMicStatus) diagMicStatus.textContent = "Requesting mic...";
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("Microphone API not available. Use http://localhost:5432 or http://127.0.0.1:5432");
+        }
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (diagMicStatus) diagMicStatus.textContent = "Mic connected & working! ✓";
-        this.showToast("Microphone is active & receiving audio", "info");
+        if (diagMicStatus) diagMicStatus.textContent = "🎤 Mic Connected! Listening for 4s...";
+        this.showToast("Microphone connected! Say something...", "info");
+
+        // Measure live volume for 4 seconds
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioCtx();
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 64;
+        src.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        let maxLevel = 0;
+        const checkInterval = setInterval(() => {
+          analyser.getByteFrequencyData(dataArray);
+          const sum = dataArray.reduce((a, b) => a + b, 0);
+          const avg = sum / dataArray.length;
+          const pct = Math.min(100, Math.round((avg / 255) * 100));
+          if (pct > maxLevel) maxLevel = pct;
+          if (diagMicStatus) diagMicStatus.textContent = `🎤 Live Mic Level: ${pct}% (Peak: ${maxLevel}%)`;
+        }, 100);
+
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          stream.getTracks().forEach((t) => t.stop());
+          ctx.close();
+          if (diagMicStatus) {
+            diagMicStatus.textContent = maxLevel > 2
+              ? `✓ Mic Working! Peak Level: ${maxLevel}%`
+              : `✓ Mic Connected (Low/quiet input: ${maxLevel}%)`;
+          }
+          this.showToast(`Mic test complete (Peak: ${maxLevel}%)`, "info");
+        }, 4000);
+
       } catch (err) {
-        if (diagMicStatus) diagMicStatus.textContent = "Mic access blocked ✕";
-        this.showToast("Microphone access failed: " + err.message, "info");
+        console.error("Mic test error:", err);
+        if (diagMicStatus) diagMicStatus.textContent = "✕ Mic Blocked: " + err.message;
+        this.showToast("Mic failed: " + err.message, "info");
       }
     });
 
     document.getElementById("btn-test-server-stt")?.addEventListener("click", async () => {
       try {
-        if (diagMicStatus) diagMicStatus.textContent = "Testing STT...";
-        const status = await this.storage.getStatus();
-        if (status.status === "online") {
-          if (diagMicStatus) diagMicStatus.textContent = "STT Server Online ✓";
-          this.showToast("Local STT server is online & ready", "info");
+        if (diagMicStatus) diagMicStatus.textContent = "Testing Vosk STT Engine...";
+        const res = await fetch("/api/stream_stt", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "X-Session-ID": "diag_test",
+            "X-Reset": "true",
+          },
+          body: new Uint8Array(3200), // 100ms test PCM chunk
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (diagMicStatus) diagMicStatus.textContent = "✓ Vosk STT Engine Online & Ready!";
+          this.showToast("Local Vosk STT engine is online and decoding 16kHz audio!", "info");
         } else {
-          if (diagMicStatus) diagMicStatus.textContent = "Offline Mode";
+          if (diagMicStatus) diagMicStatus.textContent = "✕ STT Error: HTTP " + res.status;
         }
       } catch (e) {
-        if (diagMicStatus) diagMicStatus.textContent = "Error testing STT";
+        console.error("STT test error:", e);
+        if (diagMicStatus) diagMicStatus.textContent = "✕ STT Connection Error";
+        this.showToast("STT connection error", "info");
       }
+    });
+
+    document.getElementById("btn-simulate-voice")?.addEventListener("click", () => {
+      const phrases = [
+        "Chapter Introduction to Autonomous Agents",
+        "Topic Perception and Knowledge Graphs",
+        "Thought Voice dictation combined with local graph links removes creative friction",
+      ];
+      const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+      this.showToast(`Simulating spoken phrase: "${phrase}"`, "thought");
+      if (diagMicStatus) diagMicStatus.textContent = `🗣️ Simulating: "${phrase.slice(0, 25)}..."`;
+      this.voice.processFinalSpeech(phrase);
     });
   }
 
@@ -896,7 +969,15 @@ class MemoirApp {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  window.app = new MemoirApp();
-  window.app.init();
-});
+function launchApp() {
+  if (!window.app) {
+    window.app = new MemoirApp();
+    window.app.init();
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", launchApp);
+} else {
+  launchApp();
+}

@@ -1,8 +1,41 @@
 /**
  * Memoir - Voice Recognition & Speech Intelligence Engine
- * Features real-time local PCM audio streaming to Vosk STT engine, WebSpeech fallback,
- * live audio visualizer waveform rendering, and synthetic harmonic audio chimes.
+ * Features hardware-independent Web Audio capture, real-time downsampling to 16kHz PCM,
+ * direct streaming to local Vosk STT engine, and live audio visualizer.
  */
+
+function downsampleTo16kPCM(inputData, inputSampleRate) {
+  if (inputSampleRate === 16000) {
+    const pcm16 = new Int16Array(inputData.length);
+    for (let i = 0; i < inputData.length; i++) {
+      let s = Math.max(-1, Math.min(1, inputData[i]));
+      pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return pcm16;
+  }
+
+  const ratio = inputSampleRate / 16000;
+  const newLength = Math.round(inputData.length / ratio);
+  const pcm16 = new Int16Array(newLength);
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+
+  while (offsetResult < newLength) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+    let accum = 0;
+    let count = 0;
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < inputData.length; i++) {
+      accum += inputData[i];
+      count++;
+    }
+    const avg = count > 0 ? accum / count : 0;
+    const s = Math.max(-1, Math.min(1, avg));
+    pcm16[offsetResult] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    offsetResult++;
+    offsetBuffer = nextOffsetBuffer;
+  }
+  return pcm16;
+}
 
 class VoiceEngine {
   constructor() {
@@ -23,7 +56,6 @@ class VoiceEngine {
 
     // Real-time audio stream buffer
     this.pcmBufferQueue = [];
-    this.isStreaming = false;
     this.streamInterval = null;
 
     // Callbacks
@@ -32,46 +64,6 @@ class VoiceEngine {
     this.onStatusChange = null;   // (isListening: boolean)
     this.onSpeechLog = null;       // (entry: { time: string, text: string, type: string })
     this.onAudioLevel = null;      // (level: number 0-100)
-
-    this.webSpeechRecognition = null;
-    this.initWebSpeechFallback();
-  }
-
-  initWebSpeechFallback() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      try {
-        this.webSpeechRecognition = new SpeechRecognition();
-        this.webSpeechRecognition.continuous = true;
-        this.webSpeechRecognition.interimResults = true;
-        this.webSpeechRecognition.lang = this.language;
-
-        this.webSpeechRecognition.onresult = (event) => {
-          let interim = "";
-          let final = "";
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              final += transcript;
-            } else {
-              interim += transcript;
-            }
-          }
-          if (interim && this.onTranscription) {
-            this.onTranscription(interim.trim(), false);
-          }
-          if (final) {
-            this.processFinalSpeech(final.trim());
-          }
-        };
-
-        this.webSpeechRecognition.onerror = (e) => {
-          console.warn("WebSpeech recognition notice (Vosk Local Stream active):", e.error);
-        };
-      } catch (err) {
-        console.warn("WebSpeech fallback init notice:", err);
-      }
-    }
   }
 
   async toggleListening() {
@@ -87,23 +79,33 @@ class VoiceEngine {
       this.isListening = true;
       this.sessionId = "session_" + Math.random().toString(36).substring(2, 9);
 
-      // 1. Request microphone access
+      // Check mediaDevices support
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Microphone API requires a secure context. Please access Memoir via http://localhost:5432 or http://127.0.0.1:5432");
+      }
+
+      // 1. Request microphone stream
       this.microphoneStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          sampleRate: 16000,
-          channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         },
       });
 
-      // 2. Initialize AudioContext at 16kHz
+      // 2. Initialize AudioContext at native hardware rate
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      this.audioContext = new AudioCtx({ sampleRate: 16000 });
+      if (!AudioCtx) {
+        throw new Error("Web Audio API is not supported in this browser");
+      }
+
+      this.audioContext = new AudioCtx();
       if (this.audioContext.state === "suspended") {
         await this.audioContext.resume();
       }
+
+      const hardwareSampleRate = this.audioContext.sampleRate || 48000;
+      console.log(`[Memoir Voice] Microphone active at ${hardwareSampleRate} Hz (streaming to Vosk 16kHz STT)`);
 
       this.sourceNode = this.audioContext.createMediaStreamSource(this.microphoneStream);
 
@@ -112,8 +114,9 @@ class VoiceEngine {
       this.analyser.fftSize = 64;
       this.sourceNode.connect(this.analyser);
 
-      // 4. Setup PCM Audio Processor for real-time Vosk STT streaming
-      this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
+      // 4. Setup PCM Audio Processor (downsamples to 16kHz PCM Int16)
+      const bufferSize = 4096;
+      this.scriptProcessor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
       this.sourceNode.connect(this.scriptProcessor);
       this.scriptProcessor.connect(this.audioContext.destination);
 
@@ -122,44 +125,34 @@ class VoiceEngine {
         if (!this.isListening) return;
         const inputData = e.inputBuffer.getChannelData(0);
 
-        // Convert Float32 (-1.0 to +1.0) to 16-bit PCM Int16
-        const pcm16 = new Int16Array(inputData.length);
+        // Volume level calculation
         let sumSquares = 0;
-
         for (let i = 0; i < inputData.length; i++) {
-          let s = Math.max(-1, Math.min(1, inputData[i]));
-          sumSquares += s * s;
-          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+          sumSquares += inputData[i] * inputData[i];
         }
-
-        // Calculate audio volume level
         const rms = Math.sqrt(sumSquares / inputData.length);
-        const level = Math.min(100, Math.round(rms * 250));
+        const level = Math.min(100, Math.round(rms * 350));
         if (this.onAudioLevel) this.onAudioLevel(level);
 
-        // Queue PCM bytes
+        // Downsample Float32 to 16-bit PCM Int16
+        const pcm16 = downsampleTo16kPCM(inputData, hardwareSampleRate);
         this.pcmBufferQueue.push(pcm16.buffer);
       };
 
-      // 5. Start real-time background PCM sender loop (~200ms)
+      // 5. Start real-time PCM sender loop to server
       this.startPcmSenderLoop();
 
-      // 6. Also start visualizer
+      // 6. Draw waveform
       this.drawWaveform();
-
-      // 7. Optional WebSpeech start
-      if (this.webSpeechRecognition) {
-        try { this.webSpeechRecognition.start(); } catch (e) {}
-      }
 
       if (this.onStatusChange) this.onStatusChange(true);
       this.playChime("start");
 
     } catch (err) {
-      console.error("Failed to start speech recognition:", err);
+      console.error("[Memoir Voice] Failed to start microphone:", err);
       this.isListening = false;
       if (this.onStatusChange) this.onStatusChange(false);
-      alert("Microphone permission was not granted or microphone is not available. Please allow mic in browser: " + err.message);
+      alert("Microphone Error: " + err.message);
     }
   }
 
@@ -175,7 +168,7 @@ class VoiceEngine {
       isSending = true;
       const chunks = this.pcmBufferQueue.splice(0, this.pcmBufferQueue.length);
 
-      // Merge chunks into single ArrayBuffer
+      // Merge chunks
       const totalLength = chunks.reduce((acc, c) => acc + c.byteLength, 0);
       const merged = new Uint8Array(totalLength);
       let offset = 0;
@@ -208,7 +201,7 @@ class VoiceEngine {
           }
         }
       } catch (e) {
-        console.warn("PCM stream fetch warning:", e);
+        console.warn("[Memoir Voice] Stream fetch error:", e);
       } finally {
         isSending = false;
       }
@@ -240,10 +233,6 @@ class VoiceEngine {
     if (this.microphoneStream) {
       this.microphoneStream.getTracks().forEach((t) => t.stop());
       this.microphoneStream = null;
-    }
-
-    if (this.webSpeechRecognition) {
-      try { this.webSpeechRecognition.stop(); } catch (e) {}
     }
 
     // Flush any remaining recognizer text from server
@@ -415,7 +404,7 @@ class VoiceEngine {
   }
 
   /**
-   * Pleasing Harmonic Sound Feedback Synthesizer using Web Audio API
+   * Harmonic Sound Feedback Synthesizer
    */
   playChime(type) {
     if (!this.soundEffects) return;
