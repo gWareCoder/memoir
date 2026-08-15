@@ -185,6 +185,7 @@ http://localhost:5432
 | <kbd>Ctrl</kbd> + <kbd>1</kbd> | Switch to Full Knowledge Graph View |
 | <kbd>Ctrl</kbd> + <kbd>2</kbd> | Switch to Markdown Editor View |
 | <kbd>Ctrl</kbd> + <kbd>3</kbd> | Switch to Split View (Editor + Graph) |
+| <kbd>Ctrl</kbd> + <kbd>I</kbd> | Toggle Inspector & Local Graph Right Panel |
 | <kbd>Ctrl</kbd> + <kbd>S</kbd> | Save Current Note |
 | <kbd>?</kbd> | Open Voice Command Reference Modal |
 

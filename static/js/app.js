@@ -686,7 +686,37 @@ class MemoirApp {
     }, 60);
   }
 
+  toggleRightSidebar() {
+    const sidebar = document.getElementById("sidebar-right");
+    const toggleBtn = document.getElementById("btn-toggle-inspector");
+    if (!sidebar) return;
+
+    const isCollapsed = sidebar.classList.toggle("collapsed");
+    if (toggleBtn) {
+      toggleBtn.classList.toggle("active", !isCollapsed);
+    }
+    localStorage.setItem("memoir_right_sidebar_hidden", isCollapsed ? "true" : "false");
+
+    setTimeout(() => {
+      if (this.graph) this.graph.resize();
+    }, 250);
+
+    this.showToast(isCollapsed ? "Inspector & Local Graph hidden (Ctrl+I to restore)" : "Inspector & Local Graph visible", "info");
+  }
+
   setupUIEvents() {
+    // Toggle Right Sidebar (Inspector / Local Graph)
+    document.getElementById("btn-toggle-inspector")?.addEventListener("click", () => this.toggleRightSidebar());
+    document.getElementById("btn-close-inspector")?.addEventListener("click", () => this.toggleRightSidebar());
+
+    // Restore saved right sidebar collapsed state
+    if (localStorage.getItem("memoir_right_sidebar_hidden") === "true") {
+      const sidebar = document.getElementById("sidebar-right");
+      const toggleBtn = document.getElementById("btn-toggle-inspector");
+      if (sidebar) sidebar.classList.add("collapsed");
+      if (toggleBtn) toggleBtn.classList.remove("active");
+    }
+
     // View Switcher Buttons
     document.getElementById("tab-btn-graph")?.addEventListener("click", () => this.switchView("graph"));
     document.getElementById("tab-btn-editor")?.addEventListener("click", () => this.switchView("editor"));
@@ -914,6 +944,14 @@ class MemoirApp {
         e.preventDefault();
         this.editor.saveCurrentNote();
         this.showToast("Note saved", "info");
+        return;
+      }
+
+      // Toggle Right Sidebar (Inspector & Local Graph): Ctrl+I or Ctrl+B
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "i" || e.key.toLowerCase() === "b")) {
+        e.preventDefault();
+        this.toggleRightSidebar();
+        return;
       }
 
       // Help: ?

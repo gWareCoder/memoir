@@ -1,6 +1,14 @@
 ---
 title: "Chapter 1 - The Architecture of Mind"
 type: "chapter"
+created: "2026-08-15T12:31:25.786525"
+tags: ["neuroscience", "cognition", "philosophy"]
+updated: "2026-08-15T12:31:25.786555"
+---
+
+---
+title: "Chapter 1 - The Architecture of Mind"
+type: "chapter"
 created: "2026-08-15T10:32:10.358515"
 tags: ["neuroscience", "cognition", "philosophy"]
 ---
@@ -17,3 +25,4 @@ In this chapter, we explore how speech transcription bridges rapid human thought
 ### Connected Topics
 - [[Topic - Spatial Cognition & Graph Thinking]]
 - [[Topic - Stream of Consciousness Voice Capture]]
+This is alive speech Oh my gosh is certain work Oh my gosh certain were Oh my gosh a certain work
